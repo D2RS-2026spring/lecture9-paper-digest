@@ -13,6 +13,13 @@
 
 ---
 
+## 环境管理
+
+* 使用 `uv venv` 创建虚拟环境，使用 `uv pip install` 安装包，使用 `uv pip freeze` 保存 Python 环境。
+* 使用 `.env` 文件保存 API KEY。
+
+---
+
 ## 🧠 系统架构
 
 ```text
