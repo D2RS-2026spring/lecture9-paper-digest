@@ -1,20 +1,16 @@
 """主处理流程 - 协调 Zotero、LLM、数据库和缓存"""
 
-from pathlib import Path
-from typing import Optional, List, Callable, Dict, Any
-from datetime import datetime
+from typing import Dict, List, Optional
 
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-from rich.console import Console
-from rich.tree import Tree
 import questionary
+from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
-from .zotero import ZoteroClient, Paper
-from .llm import QwenClient
-from .db import Database
-from .cache import CacheManager
 from .batch import QwenBatchClient, parse_batch_result
-
+from .cache import CacheManager
+from .db import Database
+from .llm import QwenClient
+from .zotero import ZoteroClient
 
 console = Console()
 
@@ -51,11 +47,11 @@ class PaperProcessor:
             if collection_key:
                 console.print(f"[dim]找到集合: '{collection_name}' -> {collection_key}[/dim]")
             else:
-                console.print(f"[yellow]警告: 未找到集合 '{collection_name}'，将同步所有文献[/yellow]")
+                console.print(f"[yellow]警告: 未找到集合 '{collection_name}'，将同步所有文献[/yellow]")  # noqa: E501
                 collection_key = None
 
         # 获取带 PDF 的文献
-        papers = self.zotero.get_papers_with_pdf(limit=limit, collection_key=collection_key, tag=tag)
+        papers = self.zotero.get_papers_with_pdf(limit=limit, collection_key=collection_key, tag=tag)  # noqa: E501
 
         with Progress(
             SpinnerColumn(),
@@ -482,13 +478,13 @@ class PaperProcessor:
                                     # 更新数据库状态
                                     self.db.save_analysis_result(analysis_id, cache_key)
                                     processed += 1
-                                    console.print(f"    [green]✓[/green] {analysis['title'][:40]}...")
+                                    console.print(f"    [green]✓[/green] {analysis['title'][:40]}...")  # noqa: E501
                                 else:
-                                    console.print(f"    [red]✗[/red] 解析失败: {analysis['title'][:40]}...")
+                                    console.print(f"    [red]✗[/red] 解析失败: {analysis['title'][:40]}...")  # noqa: E501
                                 break
 
                 elif job.status == 'failed':
-                    console.print(f"  [red]Batch 任务失败[/red]")
+                    console.print("  [red]Batch 任务失败[/red]")
 
             except Exception as e:
                 console.print(f"  [red]检查失败: {e}[/red]")

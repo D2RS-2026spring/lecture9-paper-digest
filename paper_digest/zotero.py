@@ -1,12 +1,12 @@
 """Zotero 集成模块 - 处理本地 Zotero 连接和文献获取"""
 
 import os
-from pathlib import Path
-from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from pyzotero import zotero
 from dotenv import load_dotenv
+from pyzotero import zotero
 
 
 @dataclass

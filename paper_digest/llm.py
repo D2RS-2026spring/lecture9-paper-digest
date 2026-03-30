@@ -1,15 +1,13 @@
 """LLM 模块 - 处理 Qwen API 调用"""
 
-import os
-import json
 import hashlib
+import json
+import os
 from pathlib import Path
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
-from openai import OpenAI
 from dotenv import load_dotenv
-
+from openai import OpenAI
 
 # 分析结果现在以字典形式返回，存储在 .cache/ 中
 
@@ -31,7 +29,7 @@ class QwenClient:
 2. method: 论文采用的研究方法、实验设计或分析框架
 3. key_findings: 论文的主要发现和结论，以字符串数组形式列出
 
-请严格按照 JSON 格式返回结果。"""
+请严格按照 JSON 格式返回结果。"""  # noqa: E501
 
     @staticmethod
     def load_prompt(prompt_file: Optional[str] = None) -> str:

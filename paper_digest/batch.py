@@ -3,16 +3,16 @@
 Batch API 费用为实时调用的 50%，适合批量处理文献。
 """
 
-import os
 import json
-import time
+import os
 import tempfile
-from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+import time
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from openai import OpenAI
 from dotenv import load_dotenv
+from openai import OpenAI
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -295,7 +295,7 @@ class QwenBatchClient:
                 job = self.check_batch_status(batch_id)
                 poll_count += 1
 
-                progress.update(task, description=f"Batch 状态: {job.status} (第 {poll_count} 次检查)")
+                progress.update(task, description=f"Batch 状态: {job.status} (第 {poll_count} 次检查)")  # noqa: E501
 
                 if job.status in ['completed', 'failed', 'expired', 'cancelled']:
                     return job

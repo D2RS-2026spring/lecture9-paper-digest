@@ -1,10 +1,9 @@
 """缓存模块 - 管理 LLM 响应缓存"""
 
-import json
 import hashlib
+import json
 from pathlib import Path
-from typing import Optional, Dict, Any
-from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 
 class CacheManager:

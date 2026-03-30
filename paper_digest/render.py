@@ -2,15 +2,15 @@
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
-from datetime import datetime
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from .db import Database
 from .cache import CacheManager
+from .db import Database
 
 console = Console()
 
@@ -202,7 +202,12 @@ class QuartoRenderer:
 
             for title, content in sections:
                 if content:
-                    lines.extend([f"## {title}", "", content, ""])
+                    # 如果内容是列表，转换为带序号的字符串
+                    if isinstance(content, list):
+                        content_str = "\\n".join(f"{i+1}. {item}" for i, item in enumerate(content))
+                    else:
+                        content_str = str(content)
+                    lines.extend([f"## {title}", "", content_str, ""])
 
             # 一句话总结
             one_sentence = analysis_result.get('one_sentence_summary')

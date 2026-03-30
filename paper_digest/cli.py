@@ -19,7 +19,7 @@ def main():
 
 @main.command()
 @click.option('--limit', '-l', default=100, help='最多同步多少篇文献')
-@click.option('--collection', '-c', default=None, help='只同步指定集合的文献（支持 key 或名称，支持模糊匹配）')
+@click.option('--collection', '-c', default=None, help='只同步指定集合的文献（支持 key 或名称，支持模糊匹配）')  # noqa: E501
 @click.option('--tag', '-t', default=None, help='只同步指定标签的文献')
 @click.option('--interactive', '-i', is_flag=True, help='使用交互式界面选择集合')
 def sync(limit: int, collection: str, tag: str, interactive: bool):
@@ -145,10 +145,9 @@ def tags():
 @click.argument('paper_id', type=int)
 def show(paper_id: int):
     """显示单篇文献详情"""
-    from .db import Database, sqlite3
     from .cache import CacheManager
+    from .db import sqlite3
 
-    db = Database()
     cache = CacheManager()
 
     conn = sqlite3.connect("paper.db")
@@ -237,7 +236,7 @@ def submit_batch(limit: int, prompt: str):
         if batch_id:
             console.print(f"\n[green]✓[/green] Batch 任务已提交: {batch_id}")
             console.print("\n使用以下命令检查结果：")
-            console.print(f"  paper-digest check-batch")
+            console.print("  paper-digest check-batch")
         else:
             console.print("[yellow]没有提交新任务[/yellow]")
 
