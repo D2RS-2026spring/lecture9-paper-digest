@@ -208,3 +208,85 @@ class ZoteroClient:
     def count_items(self) -> int:
         """获取文献总数"""
         return self.zot.count_items()
+
+    def get_collections_tree(self) -> List[Dict[str, Any]]:
+        """
+        获取集合的树状结构
+
+        Returns:
+            树状结构的集合列表，每个节点包含 key, name, children
+        """
+        collections = self.get_all_collections()
+
+        # 构建 key -> collection 映射
+        key_map = {c['key']: c for c in collections}
+
+        # 构建树
+        roots = []
+        children_map = {}
+
+        for c in collections:
+            parent = c.get('parent', '')
+            if parent:
+                if parent not in children_map:
+                    children_map[parent] = []
+                children_map[parent].append(c)
+            else:
+                roots.append(c)
+
+        def build_tree(node, depth=0):
+            """递归构建树节点"""
+            result = {
+                'key': node['key'],
+                'name': node['name'],
+                'depth': depth,
+                'children': []
+            }
+
+            if node['key'] in children_map:
+                for child in children_map[node['key']]:
+                    result['children'].append(build_tree(child, depth + 1))
+
+            return result
+
+        tree = []
+        for root in roots:
+            tree.append(build_tree(root))
+
+        return tree
+
+    def flatten_collections_tree(self, tree=None) -> List[Dict[str, Any]]:
+        """
+        将树状集合展平为列表，包含缩进信息用于显示
+
+        Returns:
+            展平的集合列表，每个元素包含 key, name, display_name, depth
+        """
+        if tree is None:
+            tree = self.get_collections_tree()
+
+        result = []
+
+        def traverse(node):
+            # 生成树状前缀
+            depth = node['depth']
+            prefix = "  " * depth
+            if depth > 0:
+                prefix += "└─ "
+
+            display_name = f"{prefix}{node['name']}"
+
+            result.append({
+                'key': node['key'],
+                'name': node['name'],
+                'display_name': display_name,
+                'depth': depth
+            })
+
+            for child in node['children']:
+                traverse(child)
+
+        for root in tree:
+            traverse(root)
+
+        return result

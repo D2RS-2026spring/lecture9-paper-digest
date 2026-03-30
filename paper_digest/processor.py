@@ -1,11 +1,13 @@
 """主处理流程 - 协调 Zotero、LLM、数据库和缓存"""
 
 from pathlib import Path
-from typing import Optional, List, Callable
+from typing import Optional, List, Callable, Dict, Any
 from datetime import datetime
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.console import Console
+from rich.tree import Tree
+import questionary
 
 from .zotero import ZoteroClient, Paper
 from .llm import QwenClient
@@ -250,6 +252,56 @@ class PaperProcessor:
         for t in tags[:50]:  # 只显示前50个
             tag_name = t['tag'][:28]
             console.print(f"  {tag_name:<30} {t['items']:>10}")
+
+    def select_collections_interactive(self) -> List[str]:
+        """
+        交互式选择集合
+
+        Returns:
+            选中的集合 key 列表
+        """
+        # 获取树状集合
+        tree = self.zotero.get_collections_tree()
+        flat_collections = self.zotero.flatten_collections_tree(tree)
+
+        if not flat_collections:
+            console.print("[yellow]没有找到任何集合[/yellow]")
+            return []
+
+        # 使用 questionary 的 checkbox 进行多选
+        choices = [
+            questionary.Choice(
+                title=c['display_name'],
+                value=c['key'],
+                checked=False
+            )
+            for c in flat_collections
+        ]
+
+        # 显示树状结构
+        console.print("\n[bold]Zotero 集合结构：[/bold]")
+        self._render_tree(tree)
+        console.print()
+
+        # 交互式选择
+        selected = questionary.checkbox(
+            "请选择要同步的集合（空格选择，回车确认）：",
+            choices=choices,
+            instruction="(使用 ↑↓ 移动，空格选择/取消，回车确认，Ctrl+C 取消)"
+        ).ask()
+
+        return selected or []
+
+    def _render_tree(self, tree: List[Dict], prefix=""):
+        """渲染树状结构预览"""
+        for i, node in enumerate(tree):
+            is_last = i == len(tree) - 1
+            branch = "└── " if is_last else "├── "
+            console.print(f"{prefix}{branch}{node['name']}")
+
+            if node.get('children'):
+                new_prefix = prefix + ("    " if is_last else "│   ")
+                self._render_tree(node['children'], new_prefix)
 
     def build_batch(self, limit: Optional[int] = None,
                     custom_prompt: Optional[str] = None) -> Optional[str]:

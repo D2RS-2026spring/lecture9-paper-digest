@@ -21,10 +21,25 @@ def main():
 @click.option('--limit', '-l', default=100, help='最多同步多少篇文献')
 @click.option('--collection', '-c', default=None, help='只同步指定集合的文献（支持 key 或名称，支持模糊匹配）')
 @click.option('--tag', '-t', default=None, help='只同步指定标签的文献')
-def sync(limit: int, collection: str, tag: str):
+@click.option('--interactive', '-i', is_flag=True, help='使用交互式界面选择集合')
+def sync(limit: int, collection: str, tag: str, interactive: bool):
     """从 Zotero 同步文献"""
     try:
         processor = PaperProcessor()
+
+        # 交互式模式
+        if interactive:
+            selected_keys = processor.select_collections_interactive()
+            if not selected_keys:
+                console.print("[yellow]未选择任何集合，取消同步[/yellow]")
+                return
+            # 同步选中的集合
+            total_count = 0
+            for key in selected_keys:
+                count = processor.sync(limit=limit, collection_key=key, tag=tag)
+                total_count += count
+            console.print(f"[green]成功同步 {total_count} 篇文献[/green]")
+            return
 
         # 判断 collection 是 key 还是 name
         # key 通常是 8 位字母数字混合，如 "ABCD1234"

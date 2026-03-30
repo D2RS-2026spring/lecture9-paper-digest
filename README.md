@@ -76,6 +76,9 @@ paper-digest render
 # 列出所有集合（目录）
 paper-digest collections
 
+# 交互式选择集合（树状结构，空格多选）
+paper-digest sync -i --limit 10
+
 # 按集合名称同步（支持模糊匹配）
 paper-digest sync -c "Seed Microbiome" --limit 10
 
