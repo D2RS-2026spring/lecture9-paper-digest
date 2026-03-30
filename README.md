@@ -44,7 +44,7 @@ Markdown / Quarto
 
 ### 1️⃣ Zotero 原生集成
 
-* 通过 Zotero API 获取：
+* 通过 pyzotero 获取本地文献库的下列信息（通过 `http://127.0.0.1:23119/api` 提供）：
 
   * 文献元数据（标题、作者、年份）
   * collections（目录结构）
