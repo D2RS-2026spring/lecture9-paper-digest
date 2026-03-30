@@ -1,6 +1,7 @@
 """Quarto 渲染模块 - 生成 Markdown/Quarto 文件"""
 
 import json
+import re
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
@@ -11,6 +12,88 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from .db import Database
 
 console = Console()
+
+
+def normalize_date(date_str: Optional[str]) -> str:
+    """
+    将 Zotero 日期格式规范化为 Quarto 兼容的日期格式
+
+    支持格式：
+    - 2023 -> 2023-01-01
+    - 2023-03 -> 2023-03-01
+    - 2023-03-15 -> 2023-03-15
+    - 2023/03/15 -> 2023-03-15
+    - 2024年12月16日 -> 2024-12-16
+    - March 2023 -> 2023-03-01
+    - 空值 -> 空字符串
+    """
+    if not date_str or date_str.strip() == '':
+        return ''
+
+    date_str = date_str.strip()
+
+    # 已经是完整日期格式 YYYY-MM-DD
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+        return date_str
+
+    # 只有年份 YYYY
+    if re.match(r'^\d{4}$', date_str):
+        return f"{date_str}-01-01"
+
+    # 年月格式 YYYY-MM 或 YYYY/MM
+    if re.match(r'^\d{4}[-/]\d{2}$', date_str):
+        return f"{date_str[:4]}-{date_str[5:7]}-01"
+
+    # 斜杠格式 YYYY/MM/DD
+    if re.match(r'^\d{4}/\d{2}/\d{2}$', date_str):
+        return date_str.replace('/', '-')
+
+    # 斜杠格式 YYYY/M/D（补零）
+    slash_match = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})$', date_str)
+    if slash_match:
+        year, month, day = slash_match.groups()
+        return f"{year}-{int(month):02d}-{int(day):02d}"
+
+    # MM/YYYY 格式（如 06/2022 -> 2022-06-01）
+    mm_yyyy_match = re.match(r'^(\d{1,2})/(\d{4})$', date_str)
+    if mm_yyyy_match:
+        month, year = mm_yyyy_match.groups()
+        return f"{year}-{int(month):02d}-01"
+
+    # 中文日期格式 2024年12月16日
+    chinese_match = re.match(r'^(\d{4})年(\d{1,2})月(\d{1,2})日$', date_str)
+    if chinese_match:
+        year, month, day = chinese_match.groups()
+        return f"{year}-{int(month):02d}-{int(day):02d}"
+
+    # 中文年月格式 2024年12月
+    chinese_ym_match = re.match(r'^(\d{4})年(\d{1,2})月$', date_str)
+    if chinese_ym_match:
+        year, month = chinese_ym_match.groups()
+        return f"{year}-{int(month):02d}-01"
+
+    # 英文月份格式如 "March 2023" 或 "Mar 15, 2023" 或 "2021 Oct 21"
+    try:
+        formats = [
+            '%B %Y', '%b %Y',           # March 2023, Mar 2023
+            '%B %d, %Y', '%b %d, %Y',   # March 15, 2023, Mar 15, 2023
+            '%d %B %Y', '%d %b %Y',     # 15 March 2023, 15 Mar 2023
+            '%Y %b %d', '%Y %B %d',     # 2021 Oct 21, 2021 October 21
+        ]
+        for fmt in formats:
+            try:
+                parsed = datetime.strptime(date_str, fmt)
+                if fmt in ['%B %Y', '%b %Y']:
+                    return parsed.strftime('%Y-%m-01')
+                return parsed.strftime('%Y-%m-%d')
+            except ValueError:
+                continue
+    except Exception:
+        pass
+
+    # 无法解析，原样返回（Quarto 会忽略无效日期）
+    console.print(f"[yellow]警告：无法解析日期 '{date_str}'，将忽略[/yellow]")
+    return ''
 
 
 class QuartoRenderer:
@@ -61,26 +144,33 @@ class QuartoRenderer:
         # 解析作者
         authors = json.loads(row['authors']) if row['authors'] else []
 
+        # 规范化日期
+        normalized_date = normalize_date(row['date'])
+
         # 生成 front matter
         front_matter = {
             "title": row['title'],
             "author": authors,
-            "date": row['date'],
+            "date": normalized_date,
             "zotero_key": row['zotero_key'],
             "status": row['status'],
             "analyzed_at": row['completed_at']
         }
 
-        # 构建内容
-        lines = [
-            "---",
-            f"title: \"{row['title']}\"",
-            f"date: {row['date'] or 'N/A'}",
+        # 构建 YAML 头部
+        yaml_lines = ["---", f"title: \"{row['title']}\""]
+        if normalized_date:
+            yaml_lines.append(f"date: {normalized_date}")
+        yaml_lines.extend([
             f"zotero-key: {row['zotero_key']}",
             f"zotero-link: {row['zotero_link']}",
             "---",
-            "",
-            f"## 文献信息",
+            ""
+        ])
+
+        # 构建内容
+        lines = yaml_lines + [
+            "## 文献信息",
             "",
             f"- **标题**: {row['title']}",
             f"- **作者**: {', '.join(authors) if authors else 'N/A'}",
