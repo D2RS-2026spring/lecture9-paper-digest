@@ -117,7 +117,8 @@ def show(paper_id: int):
 
     cursor.execute("""
         SELECT p.*, a.research_question, a.method, a.key_findings,
-               a.status, a.completed_at, a.error_message
+               a.status, a.completed_at, a.error_message,
+               a.batch_id, a.batch_status
         FROM papers p
         LEFT JOIN analyses a ON p.id = a.paper_id
         WHERE p.id = ?
@@ -150,6 +151,10 @@ def show(paper_id: int):
     table.add_row("PDF 路径", row['pdf_path'][:60] + '...' if row['pdf_path'] else 'N/A')
     table.add_row("状态", row['status'] or 'never_analyzed')
 
+    if row['batch_id']:
+        table.add_row("Batch ID", row['batch_id'][:30] + '...')
+        table.add_row("Batch 状态", row['batch_status'] or 'N/A')
+
     if row['research_question']:
         table.add_row("研究问题", row['research_question'][:80])
         table.add_row("方法", row['method'][:80] if row['method'] else 'N/A')
@@ -162,6 +167,51 @@ def show(paper_id: int):
         table.add_row("错误", row['error_message'][:80])
 
     console.print(table)
+
+
+@main.command()
+@click.option('--limit', '-l', default=None, type=int, help='最多提交多少篇')
+@click.option('--prompt', '-p', default=None, help='自定义 prompt 文件路径')
+def submit_batch(limit: int, prompt: str):
+    """使用 Batch API 提交文献分析任务（节省 50% 费用）"""
+    try:
+        processor = PaperProcessor()
+
+        # 读取自定义 prompt
+        custom_prompt = None
+        if prompt:
+            with open(prompt, 'r', encoding='utf-8') as f:
+                custom_prompt = f.read()
+
+        batch_id = processor.build_batch(limit=limit, custom_prompt=custom_prompt)
+
+        if batch_id:
+            console.print(f"\n[green]✓[/green] Batch 任务已提交: {batch_id}")
+            console.print("\n使用以下命令检查结果：")
+            console.print(f"  paper-digest check-batch")
+        else:
+            console.print("[yellow]没有提交新任务[/yellow]")
+
+    except Exception as e:
+        console.print(f"[red]提交失败: {e}[/red]")
+        raise click.Abort()
+
+
+@main.command()
+@click.option('--wait', '-w', is_flag=True, help='等待任务完成')
+@click.option('--interval', '-i', default=60, help='轮询间隔（秒）')
+def check_batch(wait: bool, interval: int):
+    """检查 Batch 任务状态并获取结果"""
+    try:
+        processor = PaperProcessor()
+        count = processor.check_batch_results(
+            wait=wait,
+            poll_interval=interval
+        )
+        console.print(f"[green]✓[/green] 获取了 {count} 篇文献的结果")
+    except Exception as e:
+        console.print(f"[red]检查失败: {e}[/red]")
+        raise click.Abort()
 
 
 if __name__ == '__main__':

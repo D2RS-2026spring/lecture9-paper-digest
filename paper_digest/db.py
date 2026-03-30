@@ -129,6 +129,16 @@ class Database:
                 cursor.execute("ALTER TABLE analyses ADD COLUMN prompt_version TEXT")
             if 'model_version' not in columns:
                 cursor.execute("ALTER TABLE analyses ADD COLUMN model_version TEXT")
+            if 'batch_id' not in columns:
+                cursor.execute("ALTER TABLE analyses ADD COLUMN batch_id TEXT")
+            if 'batch_status' not in columns:
+                cursor.execute("ALTER TABLE analyses ADD COLUMN batch_status TEXT")
+            if 'input_file_id' not in columns:
+                cursor.execute("ALTER TABLE analyses ADD COLUMN input_file_id TEXT")
+            if 'output_file_id' not in columns:
+                cursor.execute("ALTER TABLE analyses ADD COLUMN output_file_id TEXT")
+            if 'error_file_id' not in columns:
+                cursor.execute("ALTER TABLE analyses ADD COLUMN error_file_id TEXT")
 
             # 检查 papers 表是否需要添加 pdf_hash 列
             cursor.execute("PRAGMA table_info(papers)")
@@ -338,7 +348,8 @@ class Database:
                     SUM(CASE WHEN a.status = 'pending' THEN 1 ELSE 0 END) as pending,
                     SUM(CASE WHEN a.status = 'processing' THEN 1 ELSE 0 END) as processing,
                     SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
-                    SUM(CASE WHEN a.status = 'failed' THEN 1 ELSE 0 END) as failed
+                    SUM(CASE WHEN a.status = 'failed' THEN 1 ELSE 0 END) as failed,
+                    SUM(CASE WHEN a.batch_status IS NOT NULL AND a.batch_status NOT IN ('completed', 'failed') THEN 1 ELSE 0 END) as batch_running
                 FROM papers p
                 LEFT JOIN analyses a ON p.id = a.paper_id
             """)
@@ -350,5 +361,92 @@ class Database:
                 'pending': row['pending'] or 0,
                 'processing': row['processing'] or 0,
                 'completed': row['completed'] or 0,
-                'failed': row['failed'] or 0
+                'failed': row['failed'] or 0,
+                'batch_running': row['batch_running'] or 0
             }
+
+    def create_batch_analysis(self, paper_id: int, batch_id: str, input_file_id: str,
+                              cache_key: Optional[str] = None,
+                              prompt_version: Optional[str] = None,
+                              model_version: Optional[str] = None) -> int:
+        """创建 Batch 分析记录"""
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO analyses (paper_id, status, batch_id, batch_status, input_file_id,
+                                     started_at, cache_key, prompt_version, model_version)
+                VALUES (?, 'processing', ?, 'validating', ?, ?, ?, ?, ?)
+            """, (paper_id, batch_id, input_file_id, datetime.now().isoformat(),
+                  cache_key, prompt_version, model_version))
+            conn.commit()
+            return cursor.lastrowid
+
+    def update_batch_status(self, analysis_id: int, batch_status: str,
+                           output_file_id: Optional[str] = None,
+                           error_file_id: Optional[str] = None,
+                           error_message: Optional[str] = None):
+        """更新 Batch 任务状态"""
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+
+            # 根据 batch_status 更新整体状态
+            status = 'processing'
+            if batch_status == 'completed':
+                status = 'processing'  # 等待下载结果
+            elif batch_status in ['failed', 'expired', 'cancelled']:
+                status = 'failed'
+
+            cursor.execute("""
+                UPDATE analyses
+                SET batch_status = ?, output_file_id = ?, error_file_id = ?,
+                    error_message = ?, status = ?, updated_at = ?
+                WHERE id = ?
+            """, (batch_status, output_file_id, error_file_id, error_message,
+                  status, datetime.now().isoformat(), analysis_id))
+            conn.commit()
+
+    def get_batch_analyses_to_check(self) -> List[Dict[str, Any]]:
+        """获取需要检查状态的 Batch 任务"""
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT a.id, a.paper_id, a.batch_id, a.batch_status, p.title
+                FROM analyses a
+                JOIN papers p ON a.paper_id = p.id
+                WHERE a.batch_id IS NOT NULL
+                  AND a.batch_status NOT IN ('completed', 'failed', 'expired', 'cancelled')
+            """)
+            rows = cursor.fetchall()
+
+            return [
+                {
+                    'id': row['id'],
+                    'paper_id': row['paper_id'],
+                    'batch_id': row['batch_id'],
+                    'batch_status': row['batch_status'],
+                    'title': row['title']
+                }
+                for row in rows
+            ]
+
+    def get_paper_by_analysis_id(self, analysis_id: int) -> Optional[Dict[str, Any]]:
+        """通过分析 ID 获取文献信息"""
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT p.id, p.zotero_key, p.title, p.pdf_path, a.batch_id
+                FROM papers p
+                JOIN analyses a ON p.id = a.paper_id
+                WHERE a.id = ?
+            """, (analysis_id,))
+            row = cursor.fetchone()
+
+            if row:
+                return {
+                    'id': row['id'],
+                    'zotero_key': row['zotero_key'],
+                    'title': row['title'],
+                    'pdf_path': row['pdf_path'],
+                    'batch_id': row['batch_id']
+                }
+            return None

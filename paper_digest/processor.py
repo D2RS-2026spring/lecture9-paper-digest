@@ -11,6 +11,7 @@ from .zotero import ZoteroClient, Paper
 from .llm import QwenClient
 from .db import Database
 from .cache import CacheManager, CacheEntry
+from .batch import QwenBatchClient, parse_batch_result
 
 
 console = Console()
@@ -240,6 +241,8 @@ class PaperProcessor:
         console.print(f"  从未分析: {stats['never_analyzed']}")
         console.print(f"  等待中: {stats['pending']}")
         console.print(f"  处理中: {stats['processing']}")
+        if stats.get('batch_running', 0) > 0:
+            console.print(f"  [yellow]Batch 运行中: {stats['batch_running']}[/yellow]")
         console.print(f"  [green]已完成: {stats['completed']}[/green]")
         console.print(f"  [red]失败: {stats['failed']}[/red]")
 
@@ -250,3 +253,197 @@ class PaperProcessor:
         console.print("\n[bold]Zotero 集合[/bold]")
         for c in collections:
             console.print(f"  {c['key']}: {c['name']}")
+
+    def build_batch(self, limit: Optional[int] = None,
+                    custom_prompt: Optional[str] = None) -> Optional[str]:
+        """
+        使用 Batch API 批量提交文献分析任务
+
+        Args:
+            limit: 最多提交多少篇，None 表示全部
+            custom_prompt: 自定义 prompt
+
+        Returns:
+            Batch 任务 ID，失败返回 None
+        """
+        # 获取未分析的文献
+        unanalyzed = self.db.get_unanalyzed_papers()
+
+        if limit:
+            unanalyzed = unanalyzed[:limit]
+
+        if not unanalyzed:
+            console.print("[yellow]没有需要提交的文献[/yellow]")
+            return None
+
+        console.print(f"[bold blue]准备使用 Batch API 提交 {len(unanalyzed)} 篇文献...[/bold blue]")
+        console.print("[dim]Batch API 费用为实时调用的 50%，通常 24 小时内完成[/dim]")
+
+        # 创建 Batch 请求
+        batch_client = QwenBatchClient()
+        requests = []
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("准备 Batch 请求...", total=len(unanalyzed))
+
+            for paper_info in unanalyzed:
+                paper_id = paper_info['id']
+                title = paper_info['title']
+                pdf_path = paper_info['pdf_path']
+
+                progress.update(task, description=f"准备: {title[:30]}...")
+
+                try:
+                    # 计算缓存 key
+                    prompt = custom_prompt or batch_client.DEFAULT_SYSTEM_PROMPT
+                    from .llm import compute_file_hash
+                    pdf_hash = compute_file_hash(pdf_path)
+                    import hashlib
+                    prompt_hash = hashlib.md5(prompt.encode()).hexdigest()[:16]
+                    cache_key = f"{pdf_hash}_{prompt_hash}_qwen-long"
+
+                    # 检查缓存（跳过已缓存的）
+                    cached = self.cache.get(cache_key)
+                    if cached:
+                        console.print(f"  [dim]跳过已缓存: {title[:40]}...[/dim]")
+                        progress.advance(task)
+                        continue
+
+                    # 创建 Batch 请求
+                    request = batch_client.create_batch_request(
+                        paper_id=str(paper_id),
+                        pdf_path=pdf_path,
+                        custom_prompt=custom_prompt
+                    )
+                    requests.append((paper_id, request, cache_key))
+
+                except Exception as e:
+                    console.print(f"  [red]✗[/red] {title[:40]}...: {str(e)[:50]}")
+
+                progress.advance(task)
+
+        if not requests:
+            console.print("[yellow]没有需要提交的新文献（都已缓存）[/yellow]")
+            return None
+
+        console.print(f"[green]✓[/green] 准备了 {len(requests)} 个 Batch 请求")
+
+        # 创建 Batch 任务
+        try:
+            job = batch_client.create_batch_job([r[1] for r in requests])
+            console.print(f"[green]✓[/green] Batch 任务创建成功: {job.batch_id}")
+
+            # 记录到数据库
+            for paper_id, request, cache_key in requests:
+                self.db.create_batch_analysis(
+                    paper_id=paper_id,
+                    batch_id=job.batch_id,
+                    input_file_id=job.input_file_id,
+                    cache_key=cache_key,
+                    prompt_version=hash(custom_prompt or "") % 10000,
+                    model_version="qwen-long"
+                )
+
+            return job.batch_id
+
+        except Exception as e:
+            console.print(f"[red]创建 Batch 任务失败: {e}[/red]")
+            return None
+
+    def check_batch_results(self, wait: bool = False,
+                           poll_interval: int = 60) -> int:
+        """
+        检查 Batch 任务状态并获取结果
+
+        Args:
+            wait: 是否等待任务完成
+            poll_interval: 轮询间隔（秒）
+
+        Returns:
+            获取结果的文献数量
+        """
+        # 获取需要检查的 Batch 任务
+        analyses = self.db.get_batch_analyses_to_check()
+
+        if not analyses:
+            console.print("[yellow]没有正在运行的 Batch 任务[/yellow]")
+            return 0
+
+        batch_client = QwenBatchClient()
+        processed = 0
+
+        # 按 batch_id 分组
+        batch_groups = {}
+        for analysis in analyses:
+            batch_id = analysis['batch_id']
+            if batch_id not in batch_groups:
+                batch_groups[batch_id] = []
+            batch_groups[batch_id].append(analysis)
+
+        console.print(f"[bold blue]检查 {len(batch_groups)} 个 Batch 任务...[/bold blue]")
+
+        for batch_id, group_analyses in batch_groups.items():
+            console.print(f"\n检查 Batch: {batch_id[:30]}...")
+            console.print(f"  包含 {len(group_analyses)} 篇文献")
+
+            try:
+                if wait:
+                    # 等待任务完成
+                    job = batch_client.wait_for_completion(
+                        batch_id=batch_id,
+                        poll_interval=poll_interval
+                    )
+                else:
+                    # 只检查一次状态
+                    job = batch_client.check_batch_status(batch_id)
+
+                console.print(f"  状态: {job.status}")
+
+                # 更新数据库中的状态
+                for analysis in group_analyses:
+                    self.db.update_batch_status(
+                        analysis_id=analysis['id'],
+                        batch_status=job.status,
+                        output_file_id=job.output_file_id,
+                        error_file_id=job.error_file_id
+                    )
+
+                # 如果完成，下载结果
+                if job.status == 'completed' and job.output_file_id:
+                    results = batch_client.download_results(job.output_file_id)
+                    console.print(f"  下载到 {len(results)} 个结果")
+
+                    # 解析并保存结果
+                    for result in results:
+                        analysis_id = int(result.custom_id)
+
+                        # 查找对应的 analysis 记录
+                        for analysis in group_analyses:
+                            if analysis['id'] == analysis_id:
+                                parsed = parse_batch_result(result)
+                                if parsed:
+                                    self.db.save_analysis_result(
+                                        analysis_id=analysis_id,
+                                        research_question=parsed['research_question'],
+                                        method=parsed['method'],
+                                        key_findings=parsed['key_findings'],
+                                        raw_response=parsed['raw_response']
+                                    )
+                                    processed += 1
+                                    console.print(f"    [green]✓[/green] {analysis['title'][:40]}...")
+                                else:
+                                    console.print(f"    [red]✗[/red] 解析失败: {analysis['title'][:40]}...")
+                                break
+
+                elif job.status == 'failed':
+                    console.print(f"  [red]Batch 任务失败[/red]")
+
+            except Exception as e:
+                console.print(f"  [red]检查失败: {e}[/red]")
+
+        console.print(f"\n[green]✓[/green] 完成：处理了 {processed} 篇文献")
+        return processed
