@@ -44,6 +44,8 @@ Markdown / Quarto
   * PDF 附件路径
 * 支持按 collection / tag 选择文献
 
+文档：[pyzotero](./docs/pyzotero/pyzotero-tutorial.md)
+
 ---
 
 ### 2️⃣ 智能缓存（核心能力）
@@ -98,6 +100,13 @@ hash(PDF内容 + prompt + model)
 }
 ```
 
+Qwen 模型使用文档：
+
+- [Qwen-long 模型解读长文](docs/qwen/qwen-long.md)
+- [Qwen-batch 异步批量化处理](docs/qwen/qwen-batch-mode.md)
+- [Qwen 结构化输出功能](docs/qwen/qwen-structured-output.md)
+- [Qwen 深度研究功能](docs/qwen/qwen-deep-research.md)
+
 ---
 
 ### 5️⃣ Quarto Book 自动生成
@@ -115,6 +124,8 @@ quarto render
 ```
 
 生成完整文献解读书籍 📘
+
+请通过 `/skills` 访问 `quarto-authoring` 技能查看文档。
 
 ---
 
