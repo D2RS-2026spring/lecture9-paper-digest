@@ -1,0 +1,524 @@
+---
+title: "Step 3: 验证 SQLite 状态管理"
+description: "使用 SQLite 管理文献和分析状态 - 使用真实 Zotero 数据"
+format: html
+---
+
+## 目标
+
+验证 SQLite 可以正常管理文献和分析任务的状态，使用 **pyzotero 从 Zotero 获取的真实数据**。
+
+## 前提条件
+
+1. 确保 `.env` 文件配置了 Zotero 连接信息
+2. Zotero 桌面客户端正在运行
+
+## .env 配置
+
+```bash
+ZOTERO_USER_ID=62236
+ZOTERO_ROOT_DIR='/Users/gaoch/Nutstore Files/zotero.storage.2016'
+ZOTERO_DATA_DIR="/Users/gaoch/Zotero/storage"
+```
+
+## 代码实现
+
+```{python}
+#| echo: true
+#| output: true
+
+import sys
+print(f"Python 解释器: {sys.executable}")
+print()
+
+import os
+import sqlite3
+from pathlib import Path
+from datetime import datetime
+from dotenv import load_dotenv
+
+# 加载 .env 文件
+env_path = Path('.env')
+if env_path.exists():
+    load_dotenv(env_path)
+    print(f"✅ 已加载环境变量")
+else:
+    load_dotenv()
+
+# 检查环境变量
+if not os.getenv('ZOTERO_USER_ID'):
+    print("⚠️  警告: ZOTERO_USER_ID 未设置")
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+from pyzotero import zotero
+import json
+
+# ============ 从 .env 读取配置 ============
+LIBRARY_TYPE = "user"
+LIBRARY_ID = os.getenv("ZOTERO_USER_ID", "")
+ZOTERO_ROOT_DIR = os.getenv("ZOTERO_ROOT_DIR", "")
+ZOTERO_DATA_DIR = os.getenv("ZOTERO_DATA_DIR", "")
+# ==========================================
+
+print("=" * 60)
+print("Step 3: SQLite + 真实 Zotero 数据")
+print("=" * 60)
+print(f"Zotero User ID: {LIBRARY_ID}")
+print()
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 第一步：连接 Zotero 并获取真实数据
+print("\n步骤 1: 从 Zotero 获取真实文献数据...")
+print("-" * 60)
+
+def resolve_attachment_path(path):
+    """将 Zotero 附件路径转换为完整文件系统路径"""
+    if not path or path == 'N/A':
+        return None
+    if os.path.isabs(path) and os.path.exists(path):
+        return path
+    if path.startswith('attachments:'):
+        relative_path = path[12:]
+        print(f"    DEBUG: attachments relative_path = {relative_path}")
+        if ZOTERO_ROOT_DIR:
+            full_path = os.path.join(ZOTERO_ROOT_DIR, relative_path)
+            print(f"    DEBUG: full_path = {full_path}")
+            print(f"    DEBUG: ZOTERO_ROOT_DIR exists = {os.path.exists(ZOTERO_ROOT_DIR)}")
+            if os.path.exists(full_path):
+                return full_path
+            else:
+                print(f"    DEBUG: File does not exist at {full_path}")
+        return None
+    if path.startswith('storage:'):
+        storage_path = path[8:]
+        if ZOTERO_DATA_DIR:
+            full_path = os.path.join(ZOTERO_DATA_DIR, storage_path)
+            if os.path.exists(full_path):
+                return full_path
+        return None
+    return None
+
+def get_pdf_attachment(zot, item_key):
+    """获取文献的 PDF 附件信息"""
+    try:
+        children = zot.children(item_key)
+        for child in children:
+            data = child.get('data', {})
+            if (data.get('itemType') == 'attachment' and
+                data.get('contentType') == 'application/pdf'):
+                return {
+                    'key': child.get('key'),
+                    'filename': data.get('filename', ''),
+                    'path': data.get('path', ''),
+                    'full_path': resolve_attachment_path(data.get('path', ''))
+                }
+        return None
+    except Exception as e:
+        print(f"获取附件失败: {e}")
+        return None
+
+# 连接 Zotero 并获取数据
+try:
+    zot = zotero.Zotero(LIBRARY_ID, LIBRARY_TYPE, local=True)
+    print(f"✅ 已连接到本地 Zotero")
+
+    # 获取前 5 条文献，筛选出有 PDF 的
+    items = zot.top(limit=10)
+    print(f"获取到 {len(items)} 条文献，筛选带 PDF 的前 3 条...")
+
+    real_papers = []
+
+    print("\n调试：检查每条文献的附件...")
+    for item in items:
+        data = item.get('data', {})
+        item_key = item.get('key')
+        title = data.get('title', 'Unknown')[:40]
+
+        # 获取 PDF 附件
+        pdf = get_pdf_attachment(zot, item_key)
+
+        if pdf:
+            print(f"  [{item_key}] {title}...")
+            print(f"    PDF filename: {pdf['filename']}")
+            print(f"    Raw path: {pdf['path']}")
+            print(f"    Resolved path: {pdf['full_path']}")
+            if pdf['full_path']:
+                print(f"    Path exists: {os.path.exists(pdf['full_path'])}")
+
+            if pdf['full_path'] and os.path.exists(pdf['full_path']):
+                # 提取作者信息
+                creators = data.get('creators', [])
+                authors = []
+                for creator in creators:
+                    if creator.get('creatorType') in ['author', 'editor']:
+                        first = creator.get('firstName', '')
+                        last = creator.get('lastName', '')
+                        if first and last:
+                            authors.append(f"{first} {last}")
+                        elif last:
+                            authors.append(last)
+
+                paper = {
+                    'zotero_key': item_key,
+                    'title': data.get('title', 'Unknown Title'),
+                    'item_type': data.get('itemType', 'unknown'),
+                    'date': data.get('date', ''),
+                    'authors': json.dumps(authors) if authors else '[]',
+                    'pdf_path': pdf['full_path'],
+                    'pdf_filename': pdf['filename'],
+                    'zotero_link': f"zotero://select/items/{item_key}"
+                }
+                real_papers.append(paper)
+                print(f"    ✅ 已添加到列表 (当前 {len(real_papers)}/3)")
+
+                if len(real_papers) >= 3:
+                    break
+        else:
+            print(f"  [{item_key}] {title}... - 无 PDF 附件")
+
+    print(f"\n✅ 成功获取 {len(real_papers)} 条带 PDF 的真实文献")
+
+    for i, paper in enumerate(real_papers, 1):
+        print(f"\n[{i}] {paper['title'][:50]}...")
+        print(f"    Type: {paper['item_type']}")
+        print(f"    Date: {paper['date']}")
+        print(f"    PDF: {paper['pdf_path']}")
+
+    if len(real_papers) == 0:
+        print("\n❌ 错误：未找到带 PDF 的文献")
+        print("\n调试信息：")
+        print(f"  - ZOTERO_ROOT_DIR: {ZOTERO_ROOT_DIR}")
+        print(f"  - ZOTERO_ROOT_DIR 是否存在: {os.path.exists(ZOTERO_ROOT_DIR) if ZOTERO_ROOT_DIR else 'N/A'}")
+        raise Exception("未找到带 PDF 的文献，请检查 Zotero 中是否有带附件的文献")
+
+except Exception as e:
+    print(f"❌ 获取数据失败: {e}")
+    raise
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 第二步：创建 SQLite 数据库
+print("\n步骤 2: 创建 SQLite 数据库...")
+print("-" * 60)
+
+DB_PATH = "paper.db"
+
+# 如果数据库已存在，先删除
+if os.path.exists(DB_PATH):
+    os.remove(DB_PATH)
+    print(f"已删除旧数据库: {DB_PATH}")
+
+# 连接数据库
+conn = sqlite3.connect(DB_PATH)
+cursor = conn.cursor()
+
+# 创建 papers 表
+cursor.execute("""
+CREATE TABLE papers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    zotero_key TEXT UNIQUE,
+    title TEXT NOT NULL,
+    item_type TEXT,
+    date TEXT,
+    authors TEXT,
+    pdf_path TEXT,
+    zotero_link TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+""")
+print("✅ 创建表: papers")
+
+# 创建 analyses 表
+cursor.execute("""
+CREATE TABLE analyses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id INTEGER NOT NULL,
+    status TEXT DEFAULT 'pending',
+    research_question TEXT,
+    method TEXT,
+    key_findings TEXT,
+    raw_response TEXT,
+    error_message TEXT,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE CASCADE
+)
+""")
+print("✅ 创建表: analyses")
+
+# 创建索引
+cursor.execute("CREATE INDEX idx_papers_zotero_key ON papers(zotero_key)")
+cursor.execute("CREATE INDEX idx_analyses_paper_id ON analyses(paper_id)")
+cursor.execute("CREATE INDEX idx_analyses_status ON analyses(status)")
+print("✅ 创建索引")
+
+conn.commit()
+print(f"\n✅ 数据库初始化完成: {DB_PATH}")
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 第三步：插入真实的 Zotero 数据
+print("\n步骤 3: 插入真实的 Zotero 数据...")
+print("-" * 60)
+
+inserted_ids = []
+
+for paper in real_papers:
+    cursor.execute("""
+        INSERT INTO papers (zotero_key, title, item_type, date, authors, pdf_path, zotero_link)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        paper['zotero_key'],
+        paper['title'],
+        paper['item_type'],
+        paper['date'],
+        paper['authors'],
+        paper['pdf_path'],
+        paper['zotero_link']
+    ))
+    inserted_ids.append(cursor.lastrowid)
+
+conn.commit()
+print(f"✅ 插入 {len(real_papers)} 条真实文献记录")
+
+# 显示插入的数据
+print("\n已插入的文献:")
+cursor.execute("SELECT id, zotero_key, title, date FROM papers")
+for row in cursor.fetchall():
+    print(f"  ID {row[0]} [{row[1]}]: {row[2][:40]}... ({row[3]})")
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 第四步：创建分析记录（模拟不同状态）
+print("\n步骤 4: 创建分析记录（模拟状态）...")
+print("-" * 60)
+
+# 第一条：待分析 (pending)
+if len(inserted_ids) >= 1:
+    cursor.execute("""
+        INSERT INTO analyses (paper_id, status, started_at)
+        VALUES (?, 'pending', ?)
+    """, (inserted_ids[0], datetime.now().isoformat()))
+    print(f"✅ Paper ID {inserted_ids[0]}: pending (待分析)")
+
+# 第二条：分析中 (processing)
+if len(inserted_ids) >= 2:
+    cursor.execute("""
+        INSERT INTO analyses (paper_id, status, started_at)
+        VALUES (?, 'processing', ?)
+    """, (inserted_ids[1], datetime.now().isoformat()))
+    print(f"✅ Paper ID {inserted_ids[1]}: processing (分析中)")
+
+# 第三条：已完成 (completed) - 模拟一个已完成的分析
+if len(inserted_ids) >= 3:
+    cursor.execute("""
+        INSERT INTO analyses (paper_id, status, research_question, method, key_findings, completed_at)
+        VALUES (?, 'completed', ?, ?, ?, ?)
+    """, (
+        inserted_ids[2],
+        "How does the plant microbiome influence crop yield and stress resistance?",
+        "16S rRNA sequencing, metagenomics, and field trials",
+        json.dumps([
+            "Specific microbial taxa correlate with increased crop yield",
+            "Microbiome composition changes under drought stress",
+            "Host genotype affects microbiome assembly"
+        ]),
+        datetime.now().isoformat()
+    ))
+    print(f"✅ Paper ID {inserted_ids[2]}: completed (已完成)")
+
+conn.commit()
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 第五步：查询"未分析的文献"
+print("\n步骤 5: 查询'未分析的文献'...")
+print("-" * 60)
+
+# 查询没有分析记录或分析失败的文献
+cursor.execute("""
+    SELECT p.id, p.zotero_key, p.title, p.date, p.pdf_path
+    FROM papers p
+    LEFT JOIN analyses a ON p.id = a.paper_id
+    WHERE a.id IS NULL
+       OR a.status IN ('pending', 'failed')
+    ORDER BY p.id
+""")
+
+unanalyzed = cursor.fetchall()
+
+if unanalyzed:
+    print(f"找到 {len(unanalyzed)} 篇未分析的文献:\n")
+    for row in unanalyzed:
+        print(f"  📄 ID {row[0]} [{row[1]}]")
+        print(f"     标题: {row[2][:50]}...")
+        print(f"     日期: {row[3]}")
+        print(f"     PDF: {row[4][:60]}...")
+        print()
+else:
+    print("✅ 所有文献都已分析完成")
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 第六步：统计和展示
+print("\n" + "=" * 60)
+print("数据库状态统计")
+print("=" * 60)
+
+# 统计各类状态的文献数量
+cursor.execute("""
+    SELECT
+        COUNT(*) as total_papers,
+        SUM(CASE WHEN a.id IS NULL THEN 1 ELSE 0 END) as never_analyzed,
+        SUM(CASE WHEN a.status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN a.status = 'processing' THEN 1 ELSE 0 END) as processing,
+        SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN a.status = 'failed' THEN 1 ELSE 0 END) as failed
+    FROM papers p
+    LEFT JOIN analyses a ON p.id = a.paper_id
+""")
+
+stats = cursor.fetchone()
+print(f"  总文献数:     {stats[0]}")
+print(f"  从未分析:     {stats[1]}")
+print(f"  等待中:       {stats[2]}")
+print(f"  处理中:       {stats[3]}")
+print(f"  已完成:       {stats[4]}")
+print(f"  失败:         {stats[5]}")
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 第七步：展示完整数据
+print("\n完整数据预览:")
+print("=" * 60)
+
+cursor.execute("""
+    SELECT
+        p.id,
+        p.zotero_key,
+        p.title,
+        a.status,
+        a.research_question IS NOT NULL as has_result
+    FROM papers p
+    LEFT JOIN analyses a ON p.id = a.paper_id
+""")
+
+all_data = cursor.fetchall()
+for row in all_data:
+    status_icon = {
+        None: '⬜',
+        'pending': '⏳',
+        'processing': '🔄',
+        'completed': '✅',
+        'failed': '❌'
+    }.get(row[3], '?')
+    result_indicator = "📊" if row[4] else ""
+    print(f"  [{row[0]}] {status_icon} {row[1]}: {row[2][:40]}... {result_indicator}")
+
+# 关闭数据库连接
+conn.close()
+print(f"\n✅ 数据库连接已关闭")
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 总结
+print("\n" + "=" * 60)
+print("Step 3 完成总结")
+print("=" * 60)
+print("✅ 从 Zotero 获取了 3 条真实文献数据")
+print("✅ 创建了 SQLite 数据库 (paper.db)")
+print("✅ 插入真实文献信息（title, authors, date, pdf_path 等）")
+print("✅ 创建分析记录并模拟不同状态")
+print("✅ 实现'未分析文献'查询功能")
+print()
+print("🎉 三步 MVP 验证全部完成！")
+print()
+print("完整流程:")
+print("  1. Zotero → 获取真实文献和 PDF 路径")
+print("  2. PDF → Qwen-long 解析（Step 2）")
+print("  3. 结果 → SQLite 存储（本步骤）")
+```
+
+## 数据库 Schema
+
+### papers 表（存储真实 Zotero 数据）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER | 主键 |
+| zotero_key | TEXT | Zotero 唯一标识 |
+| title | TEXT | 文献标题（真实数据） |
+| item_type | TEXT | 文献类型 |
+| date | TEXT | 发表日期 |
+| authors | TEXT | 作者（JSON 格式） |
+| pdf_path | TEXT | **PDF 完整文件路径** |
+| zotero_link | TEXT | Zotero 链接 |
+
+### analyses 表（存储分析状态）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER | 主键 |
+| paper_id | INTEGER | 关联 papers.id |
+| status | TEXT | pending/processing/completed/failed |
+| research_question | TEXT | 研究问题 |
+| method | TEXT | 研究方法 |
+| key_findings | TEXT | 主要发现（JSON） |
+
+## 关键查询
+
+### 查找未分析的文献
+
+```sql
+SELECT p.id, p.title, p.pdf_path
+FROM papers p
+LEFT JOIN analyses a ON p.id = a.paper_id
+WHERE a.id IS NULL OR a.status IN ('pending', 'failed')
+```
+
+### 获取下一个待分析的 PDF
+
+```python
+cursor.execute("""
+    SELECT p.id, p.title, p.pdf_path
+    FROM papers p
+    LEFT JOIN analyses a ON p.id = a.paper_id
+    WHERE a.status = 'pending'
+    ORDER BY p.id
+    LIMIT 1
+""")
+paper = cursor.fetchone()
+# 使用 paper['pdf_path'] 进行 Qwen-long 分析
+```
