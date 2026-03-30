@@ -7,7 +7,19 @@
 *.html
 *.quarto_ipynb
 
+# 本地图书目录
+quarto/
+paper.db
+
 
 # python 环境
 .venv/
+__pycache__
+
+# claude 配置
+.claude/
+
+# 本地缓存
+.cache/
+
 

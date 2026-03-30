@@ -1,0 +1,273 @@
+"""Quarto 渲染模块 - 生成 Markdown/Quarto 文件"""
+
+import json
+from pathlib import Path
+from typing import List, Optional
+from datetime import datetime
+
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
+from .db import Database
+
+console = Console()
+
+
+class QuartoRenderer:
+    """Quarto 渲染器"""
+
+    def __init__(self, output_dir: str = "quarto"):
+        self.output_dir = Path(output_dir)
+        self.papers_dir = self.output_dir / "papers"
+        self.db = Database()
+
+    def setup(self):
+        """初始化目录结构"""
+        self.output_dir.mkdir(exist_ok=True)
+        self.papers_dir.mkdir(exist_ok=True)
+
+    def render_paper(self, paper_id: int) -> Optional[Path]:
+        """
+        渲染单篇文献为 Quarto 文件
+
+        Args:
+            paper_id: 文献 ID
+
+        Returns:
+            生成的文件路径
+        """
+        import sqlite3
+        conn = sqlite3.connect("paper.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # 获取文献和分析数据
+        cursor.execute("""
+            SELECT p.*, a.research_question, a.method, a.key_findings,
+                   a.status, a.completed_at
+            FROM papers p
+            LEFT JOIN analyses a ON p.id = a.paper_id
+            WHERE p.id = ?
+            ORDER BY a.id DESC
+            LIMIT 1
+        """, (paper_id,))
+
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return None
+
+        # 解析作者
+        authors = json.loads(row['authors']) if row['authors'] else []
+
+        # 生成 front matter
+        front_matter = {
+            "title": row['title'],
+            "author": authors,
+            "date": row['date'],
+            "zotero_key": row['zotero_key'],
+            "status": row['status'],
+            "analyzed_at": row['completed_at']
+        }
+
+        # 构建内容
+        lines = [
+            "---",
+            f"title: \"{row['title']}\"",
+            f"date: {row['date'] or 'N/A'}",
+            f"zotero-key: {row['zotero_key']}",
+            f"zotero-link: {row['zotero_link']}",
+            "---",
+            "",
+            f"## 文献信息",
+            "",
+            f"- **标题**: {row['title']}",
+            f"- **作者**: {', '.join(authors) if authors else 'N/A'}",
+            f"- **日期**: {row['date'] or 'N/A'}",
+            f"- **类型**: {row['item_type']}",
+            f"- [在 Zotero 中打开]({row['zotero_link']})",
+            "",
+        ]
+
+        # 添加分析结果
+        if row['status'] == 'completed' and row['research_question']:
+            lines.extend([
+                "## 分析结果",
+                "",
+                "### 研究问题",
+                "",
+                row['research_question'],
+                "",
+                "### 研究方法",
+                "",
+                row['method'],
+                "",
+                "### 主要发现",
+                "",
+            ])
+
+            findings = json.loads(row['key_findings']) if row['key_findings'] else []
+            for i, finding in enumerate(findings, 1):
+                lines.append(f"{i}. {finding}")
+
+            lines.append("")
+        else:
+            lines.extend([
+                "## 分析结果",
+                "",
+                f"> 状态: {row['status']}",
+                "",
+                "这篇文献尚未完成分析。",
+                "",
+            ])
+
+        # 写入文件
+        safe_title = "".join(c for c in row['title'][:50] if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        safe_title = safe_title.replace(' ', '-')
+        filename = f"{row['id']:04d}-{safe_title or 'untitled'}.qmd"
+        filepath = self.papers_dir / filename
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines))
+
+        return filepath
+
+    def render_all(self) -> List[Path]:
+        """
+        渲染所有已完成的文献
+
+        Returns:
+            生成的文件路径列表
+        """
+        self.setup()
+
+        # 获取所有文献
+        papers = self.db.get_all_papers()
+
+        rendered = []
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("渲染文献...", total=len(papers))
+
+            for paper in papers:
+                progress.update(task, description=f"渲染: {paper.title[:30]}...")
+
+                filepath = self.render_paper(paper.id)
+                if filepath:
+                    rendered.append(filepath)
+
+                progress.advance(task)
+
+        console.print(f"[green]✓[/green] 渲染完成：{len(rendered)} 篇文献")
+        return rendered
+
+    def generate_index(self):
+        """生成索引文件"""
+        # 获取统计
+        stats = self.db.get_stats()
+
+        # 获取所有文献
+        papers = self.db.get_all_papers()
+
+        lines = [
+            "---",
+            f"title: \"Paper Digest - 文献知识库\"",
+            f"date: {datetime.now().strftime('%Y-%m-%d')}",
+            "---",
+            "",
+            "# Paper Digest",
+            "",
+            "基于 Zotero + Qwen 的科研文献知识编译系统",
+            "",
+            "## 统计",
+            "",
+            f"- 总文献数: {stats['total_papers']}",
+            f"- 已完成分析: {stats['completed']}",
+            f"- 待分析: {stats['pending'] + stats['never_analyzed']}",
+            "",
+            "## 文献列表",
+            "",
+        ]
+
+        import sqlite3
+        conn = sqlite3.connect("paper.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        for paper in papers:
+            cursor.execute("""
+                SELECT status FROM analyses
+                WHERE paper_id = ?
+                ORDER BY id DESC LIMIT 1
+            """, (paper.id,))
+
+            row = cursor.fetchone()
+            status = row['status'] if row else 'never_analyzed'
+
+            status_icon = {
+                'completed': '✅',
+                'pending': '⏳',
+                'processing': '🔄',
+                'failed': '❌',
+                'never_analyzed': '⬜'
+            }.get(status, '⬜')
+
+            safe_title = "".join(c for c in paper.title[:50] if c.isalnum() or c in (' ', '-', '_')).rstrip()
+            safe_title = safe_title.replace(' ', '-')
+            filename = f"papers/{paper.id:04d}-{safe_title or 'untitled'}.qmd"
+
+            lines.append(f"{status_icon} [{paper.title}]({filename})")
+
+        conn.close()
+
+        # 写入索引
+        index_path = self.output_dir / "index.qmd"
+        with open(index_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines))
+
+        console.print(f"[green]✓[/green] 索引文件: {index_path}")
+        return index_path
+
+    def generate_quarto_yaml(self):
+        """生成 _quarto.yml 配置文件"""
+        config = """project:
+  type: book
+  output-dir: _book
+
+book:
+  title: "Paper Digest"
+  author: "Generated by Paper Digest"
+  date: today
+  chapters:
+    - index.qmd
+    - part: "文献列表"
+      chapters:
+"""
+
+        # 获取所有文献文件
+        if self.papers_dir.exists():
+            qmd_files = sorted(self.papers_dir.glob("*.qmd"))
+            for qmd_file in qmd_files:
+                config += f"        - papers/{qmd_file.name}\n"
+
+        config += """
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+  pdf:
+    documentclass: scrreprt
+"""
+
+        config_path = self.output_dir / "_quarto.yml"
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.write(config)
+
+        console.print(f"[green]✓[/green] 配置文件: {config_path}")
+        return config_path

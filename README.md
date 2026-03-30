@@ -166,73 +166,95 @@ paper-digest/
 ## ⚙️ 安装
 
 ```bash
+# 克隆仓库
 git clone <repo>
 cd paper-digest
+
+# 创建虚拟环境并安装依赖
+uv venv
+source .venv/bin/activate
+uv pip install -e .
+
+# 或使用 pip
 pip install -e .
 ```
+
+安装完成后，`paper-digest` 命令即可使用。
 
 ---
 
 ## 🔧 配置
 
-### 1. Zotero API
-
-确保：
-
-* Zotero 已开启本地 API
-
----
-
-### 2. Qwen API
-
-设置环境变量：
+创建 `.env` 文件：
 
 ```bash
-export DASHSCOPE_API_KEY=your_key
+# Zotero 配置
+ZOTERO_USER_ID=your_user_id
+ZOTERO_ROOT_DIR=/path/to/your/attachments
+ZOTERO_DATA_DIR=/path/to/zotero/storage
+
+# DashScope API Key
+DASHSCOPE_API_KEY=your_api_key
 ```
 
----
+### 1. Zotero 配置
 
-### 3. Prompt
+1. 确保 Zotero 桌面客户端正在运行
+2. 在 Zotero 中启用本地 HTTP 服务：编辑 → 首选项 → 高级 → 本地 HTTP 服务
+3. 获取 User ID：登录 zotero.org，查看 Library URL 中的数字
 
-编辑：
+### 2. Prompt 配置
 
-```text
-prompts/v1.txt
-```
+编辑 `prompts/v1.txt` 自定义分析 prompt。
 
 ---
 
 ## 🧪 使用方式
 
-### 同步 Zotero 文献
+### 完整工作流
 
 ```bash
-paper-digest sync
+# 1. 从 Zotero 同步文献
+paper-digest sync --limit 10
+
+# 2. 解析文献（调用 Qwen-long）
+paper-digest build --limit 5
+
+# 3. 生成 Quarto Book
+paper-digest render
+
+# 4. 渲染成 HTML/PDF
+cd quarto && quarto render
 ```
 
----
-
-### 构建（解析新文献）
+### 查看统计
 
 ```bash
-paper-digest build
+paper-digest stats
 ```
 
----
+### 列出 Zotero 集合
 
-### 强制重建
+```bash
+paper-digest collections
+```
+
+### 查看单篇文献详情
+
+```bash
+paper-digest show 1
+```
+
+### 强制重新解析
 
 ```bash
 paper-digest rebuild
 ```
 
----
-
-### 渲染 Quarto Book
+### 使用自定义 Prompt
 
 ```bash
-paper-digest render
+paper-digest build --prompt prompts/v1.txt
 ```
 
 ---
