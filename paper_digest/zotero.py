@@ -89,12 +89,16 @@ class ZoteroClient:
             print(f"获取附件失败: {e}")
             return None
 
-    def get_papers_with_pdf(self, limit: int = 10, collection_key: Optional[str] = None) -> List[Paper]:
+    def get_papers_with_pdf(self, limit: int = 10, collection_key: Optional[str] = None,
+                           tag: Optional[str] = None) -> List[Paper]:
         """获取带 PDF 的文献列表"""
         papers = []
 
         # 获取文献
-        if collection_key:
+        if tag:
+            # 按标签搜索
+            items = self.zot.items(tag=tag, limit=limit * 2)
+        elif collection_key:
             items = self.zot.collection_items(collection_key, limit=limit * 2)
         else:
             items = self.zot.top(limit=limit * 2)
@@ -152,6 +156,54 @@ class ZoteroClient:
             }
             for c in collections
         ]
+
+    def find_collection_by_name(self, name: str) -> Optional[str]:
+        """通过名称查找集合的 key（支持模糊匹配）"""
+        collections = self.get_all_collections()
+
+        # 完全匹配
+        for c in collections:
+            if c['name'] == name:
+                return c['key']
+
+        # 不区分大小写匹配
+        name_lower = name.lower()
+        for c in collections:
+            if c['name'].lower() == name_lower:
+                return c['key']
+
+        # 包含匹配
+        matches = [c for c in collections if name_lower in c['name'].lower()]
+        if len(matches) == 1:
+            return matches[0]['key']
+        elif len(matches) > 1:
+            # 多个匹配，返回最短的（最精确）
+            matches.sort(key=lambda x: len(x['name']))
+            return matches[0]['key']
+
+        return None
+
+    def get_all_tags(self) -> List[Dict[str, Any]]:
+        """获取所有标签及其使用次数"""
+        tags = self.zot.tags()
+        result = []
+        for tag in tags:
+            # API 返回的是字符串
+            if isinstance(tag, str):
+                result.append({
+                    'tag': tag,
+                    'type': 0,
+                    'items': 0
+                })
+            else:
+                # 某些版本可能返回字典
+                data = tag.get('data', {}) if isinstance(tag, dict) else {}
+                result.append({
+                    'tag': data.get('tag', str(tag)),
+                    'type': data.get('type', 0),
+                    'items': tag.get('meta', {}).get('numItems', 0) if isinstance(tag, dict) else 0
+                })
+        return result
 
     def count_items(self) -> int:
         """获取文献总数"""

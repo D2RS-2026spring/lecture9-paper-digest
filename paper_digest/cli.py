@@ -19,12 +19,24 @@ def main():
 
 @main.command()
 @click.option('--limit', '-l', default=100, help='最多同步多少篇文献')
-@click.option('--collection', '-c', default=None, help='只同步指定集合的文献')
-def sync(limit: int, collection: str):
+@click.option('--collection', '-c', default=None, help='只同步指定集合的文献（支持 key 或名称，支持模糊匹配）')
+@click.option('--tag', '-t', default=None, help='只同步指定标签的文献')
+def sync(limit: int, collection: str, tag: str):
     """从 Zotero 同步文献"""
     try:
         processor = PaperProcessor()
-        count = processor.sync(limit=limit, collection_key=collection)
+
+        # 判断 collection 是 key 还是 name
+        # key 通常是 8 位字母数字混合，如 "ABCD1234"
+        if collection and len(collection) == 8 and collection.isalnum():
+            # 可能是 key，直接使用
+            count = processor.sync(limit=limit, collection_key=collection, tag=tag)
+        elif collection:
+            # 按名称查找
+            count = processor.sync(limit=limit, collection_name=collection, tag=tag)
+        else:
+            count = processor.sync(limit=limit, tag=tag)
+
         console.print(f"[green]成功同步 {count} 篇文献[/green]")
     except Exception as e:
         console.print(f"[red]同步失败: {e}[/red]")
@@ -100,6 +112,17 @@ def collections():
         processor.list_collections()
     except Exception as e:
         console.print(f"[red]获取集合失败: {e}[/red]")
+        raise click.Abort()
+
+
+@main.command()
+def tags():
+    """列出 Zotero 标签"""
+    try:
+        processor = PaperProcessor()
+        processor.list_tags()
+    except Exception as e:
+        console.print(f"[red]获取标签失败: {e}[/red]")
         raise click.Abort()
 
 

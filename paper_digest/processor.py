@@ -26,21 +26,34 @@ class PaperProcessor:
         self.db = Database()
         self.cache = CacheManager()
 
-    def sync(self, limit: int = 100, collection_key: Optional[str] = None) -> int:
+    def sync(self, limit: int = 100, collection_key: Optional[str] = None,
+             collection_name: Optional[str] = None,
+             tag: Optional[str] = None) -> int:
         """
         从 Zotero 同步文献到数据库
 
         Args:
             limit: 最多同步多少篇文献
-            collection_key: 只同步指定集合的文献
+            collection_key: 只同步指定集合的文献（使用 key）
+            collection_name: 只同步指定集合的文献（使用名称，支持模糊匹配）
+            tag: 只同步指定标签的文献
 
         Returns:
             同步的文献数量
         """
         console.print("[bold blue]正在从 Zotero 同步文献...[/bold blue]")
 
+        # 如果提供了 collection_name，查找对应的 key
+        if collection_name and not collection_key:
+            collection_key = self.zotero.find_collection_by_name(collection_name)
+            if collection_key:
+                console.print(f"[dim]找到集合: '{collection_name}' -> {collection_key}[/dim]")
+            else:
+                console.print(f"[yellow]警告: 未找到集合 '{collection_name}'，将同步所有文献[/yellow]")
+                collection_key = None
+
         # 获取带 PDF 的文献
-        papers = self.zotero.get_papers_with_pdf(limit=limit, collection_key=collection_key)
+        papers = self.zotero.get_papers_with_pdf(limit=limit, collection_key=collection_key, tag=tag)
 
         with Progress(
             SpinnerColumn(),
@@ -226,6 +239,17 @@ class PaperProcessor:
         console.print("\n[bold]Zotero 集合[/bold]")
         for c in collections:
             console.print(f"  {c['key']}: {c['name']}")
+
+    def list_tags(self):
+        """列出所有标签"""
+        tags = self.zotero.get_all_tags()
+
+        console.print("\n[bold]Zotero 标签[/bold]")
+        console.print(f"  {'标签名':<30} {'使用次数':>10}")
+        console.print(f"  {'-'*30} {'-'*10}")
+        for t in tags[:50]:  # 只显示前50个
+            tag_name = t['tag'][:28]
+            console.print(f"  {tag_name:<30} {t['items']:>10}")
 
     def build_batch(self, limit: Optional[int] = None,
                     custom_prompt: Optional[str] = None) -> Optional[str]:
