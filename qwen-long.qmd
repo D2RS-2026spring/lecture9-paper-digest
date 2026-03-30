@@ -1,0 +1,415 @@
+---
+title: "Step 2: 验证 Qwen-Long PDF 解析"
+description: "使用 pyzotero 获取 PDF，并使用 Qwen-Long API 解析"
+format: html
+jupyter:
+  kernelspec:
+    name: "python3"
+    language: "python"
+    display_name: ".venv Python"
+  path: ".venv/bin/python"
+---
+
+## 目标
+
+验证完整流程：从 **Zotero 获取 PDF** → 上传到 **DashScope** → 使用 **Qwen-Long 解析**并提取结构化信息。
+
+## 前提条件
+
+1. 安装依赖: `uv pip install openai pyzotero python-dotenv`
+2. 配置 `.env` 文件（包含 Zotero 和 DashScope 配置）
+3. 确保 Zotero 桌面客户端正在运行
+
+## .env 配置示例
+
+```bash
+# Zotero 配置
+ZOTERO_USER_ID=62236
+ZOTERO_ROOT_DIR='/Users/gaoch/Nutstore Files/zotero.storage.2016'
+ZOTERO_DATA_DIR="/Users/gaoch/Zotero/storage"
+
+# DashScope 配置
+DASHSCOPE_API_KEY=your-api-key-here
+```
+
+## 代码实现
+
+```{python}
+#| echo: true
+#| output: true
+
+import sys
+print(f"Python 解释器: {sys.executable}")
+print()
+
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# 加载 .env 文件
+env_path = Path('.env')
+if env_path.exists():
+    load_dotenv(env_path)
+    print(f"✅ 已加载环境变量: {env_path.absolute()}")
+else:
+    load_dotenv()
+    print("⚠️  已尝试从当前目录加载 .env")
+
+# 检查必要的环境变量
+required_vars = ['ZOTERO_USER_ID', 'ZOTERO_ROOT_DIR', 'DASHSCOPE_API_KEY']
+missing_vars = [v for v in required_vars if not os.getenv(v)]
+
+if missing_vars:
+    print(f"\n❌ 缺少环境变量: {', '.join(missing_vars)}")
+    print("请确保 .env 文件包含这些配置")
+else:
+    print("✅ 所有必要环境变量已配置")
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+from pyzotero import zotero
+
+# ============ 从 .env 读取配置 ============
+LIBRARY_TYPE = "user"
+LIBRARY_ID = os.getenv("ZOTERO_USER_ID", "")
+ZOTERO_ROOT_DIR = os.getenv("ZOTERO_ROOT_DIR", "")
+ZOTERO_DATA_DIR = os.getenv("ZOTERO_DATA_DIR", "")
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+# ==========================================
+
+print("=" * 60)
+print("Step 2: Zotero → Qwen-Long PDF 解析")
+print("=" * 60)
+print(f"Zotero User ID: {LIBRARY_ID}")
+print(f"ZOTERO_ROOT_DIR: {ZOTERO_ROOT_DIR}")
+print(f"DashScope API Key: {'*' * 10}{DASHSCOPE_API_KEY[-4:] if DASHSCOPE_API_KEY else '未设置'}")
+print()
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 第一步：连接本地 Zotero 并获取带 PDF 的文献
+print("\n步骤 1: 从 Zotero 获取 PDF 附件...")
+print("-" * 60)
+
+def resolve_attachment_path(path):
+    """将 Zotero 附件路径转换为完整文件系统路径"""
+    if not path or path == 'N/A':
+        return None
+
+    # 已经是绝对路径
+    if os.path.isabs(path) and os.path.exists(path):
+        return path
+
+    # attachments: 开头（链接附件）
+    if path.startswith('attachments:'):
+        relative_path = path[12:]
+        if ZOTERO_ROOT_DIR:
+            full_path = os.path.join(ZOTERO_ROOT_DIR, relative_path)
+            if os.path.exists(full_path):
+                return full_path
+        return None
+
+    # storage: 开头
+    if path.startswith('storage:'):
+        storage_path = path[8:]
+        if ZOTERO_DATA_DIR:
+            full_path = os.path.join(ZOTERO_DATA_DIR, storage_path)
+            if os.path.exists(full_path):
+                return full_path
+        return None
+
+    return None
+
+def get_pdf_attachment(zot, item_key):
+    """获取文献的第一个 PDF 附件"""
+    try:
+        children = zot.children(item_key)
+        for child in children:
+            data = child.get('data', {})
+            if (data.get('itemType') == 'attachment' and
+                data.get('contentType') == 'application/pdf'):
+                return {
+                    'key': child.get('key'),
+                    'filename': data.get('filename', ''),
+                    'path': data.get('path', ''),
+                }
+        return None
+    except Exception as e:
+        print(f"获取附件失败: {e}")
+        return None
+
+# 连接 Zotero
+try:
+    zot = zotero.Zotero(LIBRARY_ID, LIBRARY_TYPE, local=True)
+    print(f"✅ 已连接到本地 Zotero")
+
+    # 获取最近的几篇文献
+    items = zot.top(limit=10)
+    print(f"获取到 {len(items)} 条文献记录，查找带 PDF 的文献...")
+
+    # 找到第一个带 PDF 的文献
+    pdf_file = None
+    selected_item = None
+
+    for item in items:
+        item_key = item.get('key')
+        item_data = item.get('data', {})
+        title = item_data.get('title', 'N/A')
+
+        attachment = get_pdf_attachment(zot, item_key)
+        if attachment:
+            full_path = resolve_attachment_path(attachment['path'])
+            if full_path and os.path.exists(full_path):
+                pdf_file = {
+                    'item_key': item_key,
+                    'title': title,
+                    'filename': attachment['filename'],
+                    'path': attachment['path'],
+                    'full_path': full_path
+                }
+                selected_item = item
+                print(f"\n✅ 找到 PDF:")
+                print(f"   标题: {title[:50]}...")
+                print(f"   文件: {attachment['filename']}")
+                print(f"   路径: {full_path}")
+                break
+
+    if not pdf_file:
+        print("❌ 未找到可用的 PDF 附件")
+        raise Exception("No PDF found")
+
+except Exception as e:
+    print(f"❌ Zotero 连接失败: {e}")
+    raise
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 第二步：上传 PDF 到 DashScope
+print("\n步骤 2: 上传 PDF 到 DashScope...")
+print("-" * 60)
+
+from openai import OpenAI
+
+# 创建 DashScope 客户端
+client = OpenAI(
+    api_key=DASHSCOPE_API_KEY,
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+)
+
+# 上传文件
+try:
+    PDF_PATH = pdf_file['full_path']
+    print(f"上传文件: {PDF_PATH}")
+    print(f"文件大小: {os.path.getsize(PDF_PATH) / 1024 / 1024:.2f} MB")
+
+    file_object = client.files.create(
+        file=Path(PDF_PATH),
+        purpose="file-extract"
+    )
+    file_id = file_object.id
+    print(f"✅ 文件上传成功！")
+    print(f"File ID: {file_id}")
+
+except Exception as e:
+    print(f"❌ 文件上传失败: {e}")
+    print("\n可能的原因：")
+    print("- API Key 无效")
+    print("- 文件不存在或格式不支持")
+    print("- 网络连接问题")
+    raise
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 第三步：使用 Qwen-long 解析 PDF
+print("\n步骤 3: 使用 Qwen-long 解析 PDF...")
+print("-" * 60)
+
+# 定义结构化输出的 prompt
+system_prompt = """你是一个学术论文分析专家。请仔细阅读论文，提取以下信息并以 JSON 格式返回：
+
+【输出格式要求】
+{
+  "research_question": "论文的核心研究问题，字符串类型，必需",
+  "method": "论文使用的研究方法，字符串类型，必需",
+  "key_findings": ["主要发现1", "主要发现2", ...] // 字符串数组，必需
+}
+
+【字段说明】
+1. research_question: 论文试图解决的核心问题或研究目标
+2. method: 论文采用的研究方法、实验设计或分析框架
+3. key_findings: 论文的主要发现和结论，以字符串数组形式列出
+
+请严格按照 JSON 格式返回结果。"""
+
+# 构造消息，使用 fileid:// 引用上传的文件
+messages = [
+    {
+        "role": "system",
+        "content": "You are a helpful assistant."
+    },
+    {
+        "role": "system",
+        "content": f"fileid://{file_id}"
+    },
+    {
+        "role": "user",
+        "content": system_prompt
+    }
+]
+
+print("正在调用 Qwen-long API...")
+print(f"模型: qwen-long")
+print(f"文件 ID: {file_id}")
+print("这可能需要一些时间，取决于 PDF 大小...")
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 调用 API
+try:
+    response = client.chat.completions.create(
+        model="qwen-long",
+        messages=messages,
+        response_format={"type": "json_object"},  # 使用结构化输出
+        max_tokens=4096,
+        temperature=0.3
+    )
+
+    print("✅ API 调用成功！")
+
+except Exception as e:
+    print(f"❌ API 调用失败: {e}")
+    print("\n可能的原因：")
+    print("- API Key 无效或已过期")
+    print("- 文件上传失败或文件格式不支持")
+    print("- 网络连接问题")
+    raise
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+import json
+
+# 解析并输出结果
+print("\n解析 API 响应...")
+print("=" * 60)
+
+# 获取响应内容
+content = response.choices[0].message.content
+
+# 解析 JSON
+try:
+    result = json.loads(content)
+    print("✅ JSON 解析成功")
+
+    print(f"\n📖 文献: {pdf_file['title'][:60]}...")
+    print("-" * 60)
+    print(f"\n🔬 研究问题:\n  {result.get('research_question', 'N/A')}")
+    print(f"\n🔧 方法:\n  {result.get('method', 'N/A')}")
+    print(f"\n📊 主要发现:")
+    findings = result.get('key_findings', [])
+    if findings:
+        for i, finding in enumerate(findings, 1):
+            print(f"  {i}. {finding}")
+    else:
+        print("  N/A")
+
+    # 保存完整 JSON 结果
+    output_data = {
+        "source": {
+            "zotero_key": pdf_file['item_key'],
+            "title": pdf_file['title'],
+            "filename": pdf_file['filename'],
+            "path": pdf_file['full_path']
+        },
+        "analysis": result
+    }
+
+    output_file = "paper_analysis_result.json"
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(output_data, f, ensure_ascii=False, indent=2)
+    print(f"\n✅ 完整结果已保存到: {output_file}")
+
+except json.JSONDecodeError as e:
+    print(f"⚠️ JSON 解析失败: {e}")
+    print("原始响应内容：")
+    print(content[:1000])
+    print("\n... [内容截断] ...")
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 清理：删除上传的文件
+print("\n清理资源...")
+print("-" * 60)
+
+try:
+    client.files.delete(file_id)
+    print(f"✅ 已删除上传的文件: {file_id}")
+except Exception as e:
+    print(f"⚠️ 删除文件失败: {e}")
+    print("  文件将在 24 小时后自动过期")
+```
+
+```{python}
+#| echo: true
+#| output: true
+
+# 总结
+print("\n" + "=" * 60)
+print("Step 2 完成总结")
+print("=" * 60)
+print("✅ 从 Zotero 获取 PDF 附件")
+print("✅ 上传 PDF 到 DashScope")
+print("✅ 使用 Qwen-long 模型解析")
+print("✅ 应用结构化输出获取 JSON 结果")
+print("✅ 提取了 research_question, method, key_findings")
+print("✅ 保存分析结果到本地文件")
+print("\n完整流程验证成功！")
+print("\n下一步：将解析结果存储到 SQLite 数据库")
+```
+
+## 完整流程说明
+
+### 数据流
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Zotero    │────▶│   Local     │────▶│  DashScope  │────▶│  Qwen-Long  │
+│   Library   │     │    PDF      │     │  File API   │     │  Analysis   │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+```
+
+### 环境变量配置
+
+| 变量名 | 说明 | 用途 |
+|--------|------|------|
+| `ZOTERO_USER_ID` | Zotero 用户 ID | 连接本地 Zotero |
+| `ZOTERO_ROOT_DIR` | 附件根目录 | 解析 `attachments:` 路径 |
+| `ZOTERO_DATA_DIR` | 数据目录 | 解析 `storage:` 路径 |
+| `DASHSCOPE_API_KEY` | DashScope API Key | 上传和解析 PDF |
+
+### 运行命令
+
+```bash
+# 确保 .env 文件已配置
+.venv/bin/quarto render qwen-long.qmd
+```

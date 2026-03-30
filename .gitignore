@@ -5,6 +5,7 @@
 # quarto 临时文件
 *_files/
 *.html
+*.quarto_ipynb
 
 
 # python 环境
