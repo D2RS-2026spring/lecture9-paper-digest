@@ -10,7 +10,7 @@ from rich.console import Console
 from .zotero import ZoteroClient, Paper
 from .llm import QwenClient
 from .db import Database
-from .cache import CacheManager, CacheEntry
+from .cache import CacheManager
 from .batch import QwenBatchClient, parse_batch_result
 
 
@@ -117,15 +117,15 @@ class PaperProcessor:
 
                 try:
                     # 计算缓存 key
-                    prompt = custom_prompt or self.llm.DEFAULT_SYSTEM_PROMPT
+                    prompt = custom_prompt or self.llm.load_prompt()
                     cache_key = self.llm.compute_cache_key(pdf_path, prompt, self.llm.model)
 
                     # 检查缓存
                     if not force:
                         cached = self.cache.get(cache_key)
                         if cached:
-                            # 使用缓存结果
-                            self._save_result(paper_id, cached, cache_key)
+                            # 使用缓存结果，只需更新数据库状态
+                            self._save_result(paper_id, cache_key)
                             console.print(f"  [green]✓[/green] {title[:40]}... (缓存)")
                             processed += 1
                             progress.advance(task)
@@ -153,22 +153,11 @@ class PaperProcessor:
                     # 调用 LLM 分析
                     result = self.llm.analyze_pdf(pdf_path, system_prompt=custom_prompt)
 
-                    # 保存结果
-                    self._save_result(paper_id, result, cache_key)
+                    # 保存结果到缓存
+                    self.cache.set(cache_key, result)
 
-                    # 同时保存到文件缓存
-                    cache_entry = CacheEntry(
-                        cache_key=cache_key,
-                        pdf_hash=self.cache.compute_file_hash(pdf_path),
-                        prompt_hash=cache_key.split('_')[1],
-                        model=self.llm.model,
-                        research_question=result.research_question,
-                        method=result.method,
-                        key_findings=result.key_findings,
-                        raw_response=result.raw_response,
-                        created_at=datetime.now().isoformat()
-                    )
-                    self.cache.set(cache_entry)
+                    # 保存分析完成状态到数据库
+                    self._save_result(paper_id, cache_key)
 
                     console.print(f"  [green]✓[/green] {title[:40]}...")
                     processed += 1
@@ -183,26 +172,10 @@ class PaperProcessor:
         console.print(f"[green]✓[/green] 解析完成：{processed} 篇文献")
         return processed
 
-    def _save_result(self, paper_id: int, result, cache_key: str):
-        """保存分析结果到数据库"""
-        # 查找或创建分析记录
-        # 这里简化处理，直接更新最新的 pending/completed 记录
-        # 实际应该通过 ID 精确查找
-
-        # 暂时使用 create + update 模式
-        from .db import Database
-        db = Database()
-
-        # 由于 db.py 没有 get_analysis_by_paper_id，我们创建一个
+    def _save_result(self, paper_id: int, cache_key: str):
+        """保存分析完成状态到数据库（结果已存储在 .cache/ 中）"""
         analysis_id = self._get_or_create_analysis(paper_id, cache_key)
-
-        db.save_analysis_result(
-            analysis_id=analysis_id,
-            research_question=result.research_question,
-            method=result.method,
-            key_findings=result.key_findings if isinstance(result.key_findings, list) else [result.key_findings],
-            raw_response=result.raw_response
-        )
+        self.db.save_analysis_result(analysis_id, cache_key)
 
     def _get_or_create_analysis(self, paper_id: int, cache_key: str) -> int:
         """获取或创建分析记录"""
@@ -299,7 +272,7 @@ class PaperProcessor:
 
                 try:
                     # 计算缓存 key
-                    prompt = custom_prompt or batch_client.DEFAULT_SYSTEM_PROMPT
+                    prompt = custom_prompt or batch_client.load_prompt()
                     from .llm import compute_file_hash
                     pdf_hash = compute_file_hash(pdf_path)
                     import hashlib
@@ -426,13 +399,12 @@ class PaperProcessor:
                             if analysis['id'] == analysis_id:
                                 parsed = parse_batch_result(result)
                                 if parsed:
-                                    self.db.save_analysis_result(
-                                        analysis_id=analysis_id,
-                                        research_question=parsed['research_question'],
-                                        method=parsed['method'],
-                                        key_findings=parsed['key_findings'],
-                                        raw_response=parsed['raw_response']
-                                    )
+                                    # 保存到缓存
+                                    cache_key = analysis.get('cache_key')
+                                    if cache_key:
+                                        self.cache.set(cache_key, parsed)
+                                    # 更新数据库状态
+                                    self.db.save_analysis_result(analysis_id, cache_key)
                                     processed += 1
                                     console.print(f"    [green]✓[/green] {analysis['title'][:40]}...")
                                 else:

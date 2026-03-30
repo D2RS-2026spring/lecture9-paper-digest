@@ -108,17 +108,18 @@ def collections():
 def show(paper_id: int):
     """显示单篇文献详情"""
     from .db import Database, sqlite3
+    from .cache import CacheManager
 
     db = Database()
+    cache = CacheManager()
 
     conn = sqlite3.connect("paper.db")
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT p.*, a.research_question, a.method, a.key_findings,
-               a.status, a.completed_at, a.error_message,
-               a.batch_id, a.batch_status
+        SELECT p.*, a.status, a.completed_at, a.error_message,
+               a.batch_id, a.batch_status, a.cache_key
         FROM papers p
         LEFT JOIN analyses a ON p.id = a.paper_id
         WHERE p.id = ?
@@ -155,13 +156,23 @@ def show(paper_id: int):
         table.add_row("Batch ID", row['batch_id'][:30] + '...')
         table.add_row("Batch 状态", row['batch_status'] or 'N/A')
 
-    if row['research_question']:
-        table.add_row("研究问题", row['research_question'][:80])
-        table.add_row("方法", row['method'][:80] if row['method'] else 'N/A')
-
-        findings = json.loads(row['key_findings']) if row['key_findings'] else []
-        if findings:
-            table.add_row("主要发现", findings[0][:80] + '...')
+    # 从缓存读取分析结果
+    if row['cache_key']:
+        result = cache.get(row['cache_key'])
+        if result:
+            # 尝试提取关键信息
+            one_sentence = result.get('one_sentence_summary')
+            if one_sentence:
+                table.add_row("一句话总结", one_sentence[:80])
+            # 显示更多字段
+            for key, label in [
+                ('research_background', '研究背景'),
+                ('research_conclusion', '研究结论'),
+                ('innovation_points', '创新点'),
+            ]:
+                value = result.get(key)
+                if value:
+                    table.add_row(label, value[:80] + '...')
 
     if row['error_message']:
         table.add_row("错误", row['error_message'][:80])

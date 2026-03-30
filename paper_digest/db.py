@@ -25,20 +25,18 @@ class PaperRecord:
 
 @dataclass
 class AnalysisRecord:
-    """分析记录"""
+    """分析记录 - 结果存储在 .cache/ 中"""
     id: int
     paper_id: int
     status: str  # pending, processing, completed, failed
-    research_question: Optional[str]
-    method: Optional[str]
-    key_findings: Optional[List[str]]
-    raw_response: Optional[str]
+    cache_key: Optional[str]  # 指向 .cache/ 中的结果文件
     error_message: Optional[str]
     started_at: Optional[str]
     completed_at: Optional[str]
-    cache_key: Optional[str]
     prompt_version: Optional[str]
     model_version: Optional[str]
+    batch_id: Optional[str] = None
+    batch_status: Optional[str] = None
 
 
 class Database:
@@ -80,22 +78,24 @@ class Database:
                 )
             """)
 
-            # 创建 analyses 表
+            # 创建 analyses 表 - 只存储元数据，结果存储在 .cache/
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS analyses (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     paper_id INTEGER NOT NULL,
-                    status TEXT DEFAULT 'pending',
-                    research_question TEXT,
-                    method TEXT,
-                    key_findings TEXT,  -- JSON 格式
-                    raw_response TEXT,
+                    status TEXT DEFAULT 'pending',  -- pending, processing, completed, failed
+                    cache_key TEXT,  -- 指向 .cache/ 中的结果文件
+                    prompt_version TEXT,
+                    model_version TEXT,
                     error_message TEXT,
                     started_at TIMESTAMP,
                     completed_at TIMESTAMP,
-                    cache_key TEXT,
-                    prompt_version TEXT,
-                    model_version TEXT,
+                    -- Batch API 相关
+                    batch_id TEXT,
+                    batch_status TEXT,
+                    input_file_id TEXT,
+                    output_file_id TEXT,
+                    error_file_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE CASCADE
@@ -265,20 +265,16 @@ class Database:
 
             conn.commit()
 
-    def save_analysis_result(self, analysis_id: int, research_question: str,
-                            method: str, key_findings: List[str],
-                            raw_response: str):
-        """保存分析结果"""
+    def save_analysis_result(self, analysis_id: int, cache_key: str):
+        """保存分析完成状态（结果已存储在 .cache/ 中）"""
         with self._get_conn() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE analyses
-                SET research_question = ?, method = ?, key_findings = ?,
-                    raw_response = ?, status = 'completed',
+                SET cache_key = ?, status = 'completed',
                     completed_at = ?, updated_at = ?
                 WHERE id = ?
-            """, (research_question, method, json.dumps(key_findings, ensure_ascii=False),
-                  raw_response, datetime.now().isoformat(),
+            """, (cache_key, datetime.now().isoformat(),
                   datetime.now().isoformat(), analysis_id))
             conn.commit()
 
@@ -298,16 +294,14 @@ class Database:
                     id=row['id'],
                     paper_id=row['paper_id'],
                     status=row['status'],
-                    research_question=row['research_question'],
-                    method=row['method'],
-                    key_findings=json.loads(row['key_findings']) if row['key_findings'] else None,
-                    raw_response=row['raw_response'],
+                    cache_key=row['cache_key'],
                     error_message=row['error_message'],
                     started_at=row['started_at'],
                     completed_at=row['completed_at'],
-                    cache_key=row['cache_key'],
                     prompt_version=row['prompt_version'],
-                    model_version=row['model_version']
+                    model_version=row['model_version'],
+                    batch_id=row.get('batch_id'),
+                    batch_status=row.get('batch_status')
                 )
             return None
 
@@ -410,7 +404,7 @@ class Database:
         with self._get_conn() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT a.id, a.paper_id, a.batch_id, a.batch_status, p.title
+                SELECT a.id, a.paper_id, a.batch_id, a.batch_status, a.cache_key, p.title
                 FROM analyses a
                 JOIN papers p ON a.paper_id = p.id
                 WHERE a.batch_id IS NOT NULL
@@ -424,6 +418,7 @@ class Database:
                     'paper_id': row['paper_id'],
                     'batch_id': row['batch_id'],
                     'batch_status': row['batch_status'],
+                    'cache_key': row['cache_key'],
                     'title': row['title']
                 }
                 for row in rows

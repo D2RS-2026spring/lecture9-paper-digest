@@ -42,21 +42,19 @@ class BatchResult:
 class QwenBatchClient:
     """Qwen Batch API 客户端"""
 
-    DEFAULT_SYSTEM_PROMPT = """你是一个学术论文分析专家。请仔细阅读论文，提取以下信息并以 JSON 格式返回：
-
-【输出格式要求】
-{
-  "research_question": "论文的核心研究问题，字符串类型，必需",
-  "method": "论文使用的研究方法，字符串类型，必需",
-  "key_findings": ["主要发现1", "主要发现2", ...] // 字符串数组，必需
-}
-
-【字段说明】
-1. research_question: 论文试图解决的核心问题或研究目标
-2. method: 论文采用的研究方法、实验设计或分析框架
-3. key_findings: 论文的主要发现和结论，以字符串数组形式列出
-
-请严格按照 JSON 格式返回结果。"""
+    @staticmethod
+    def load_prompt(prompt_file: Optional[str] = None) -> str:
+        """从文件加载提示词，如果未指定则使用默认提示词"""
+        if prompt_file and Path(prompt_file).exists():
+            with open(prompt_file, 'r', encoding='utf-8') as f:
+                return f.read()
+        # 尝试加载默认提示词文件
+        default_prompt_path = Path("prompts/default.txt")
+        if default_prompt_path.exists():
+            return default_prompt_path.read_text(encoding='utf-8')
+        # 使用 QwenClient 的默认提示词
+        from .llm import QwenClient
+        return QwenClient.DEFAULT_SYSTEM_PROMPT
 
     def __init__(self):
         # 加载环境变量
@@ -100,7 +98,7 @@ class QwenBatchClient:
         # 上传 PDF
         file_id = self.upload_pdf(pdf_path)
 
-        prompt = custom_prompt or self.DEFAULT_SYSTEM_PROMPT
+        prompt = custom_prompt or self.load_prompt()
 
         # 构造 Batch 请求
         request = {
@@ -324,11 +322,7 @@ def parse_batch_result(result: BatchResult) -> Optional[Dict[str, Any]]:
 
     try:
         data = json.loads(result.content)
-        return {
-            'research_question': data.get('research_question', ''),
-            'method': data.get('method', ''),
-            'key_findings': data.get('key_findings', []),
-            'raw_response': result.raw_response or result.content
-        }
+        data['_raw_response'] = result.raw_response or result.content
+        return data
     except json.JSONDecodeError:
         return None

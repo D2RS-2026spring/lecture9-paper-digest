@@ -11,13 +11,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 
-@dataclass
-class AnalysisResult:
-    """分析结果"""
-    research_question: str
-    method: str
-    key_findings: List[str]
-    raw_response: str
+# 分析结果现在以字典形式返回，存储在 .cache/ 中
 
 
 class QwenClient:
@@ -38,6 +32,18 @@ class QwenClient:
 3. key_findings: 论文的主要发现和结论，以字符串数组形式列出
 
 请严格按照 JSON 格式返回结果。"""
+
+    @staticmethod
+    def load_prompt(prompt_file: Optional[str] = None) -> str:
+        """从文件加载提示词，如果未指定则使用默认提示词"""
+        if prompt_file and Path(prompt_file).exists():
+            with open(prompt_file, 'r', encoding='utf-8') as f:
+                return f.read()
+        # 尝试加载默认提示词文件
+        default_prompt_path = Path("prompts/default.txt")
+        if default_prompt_path.exists():
+            return default_prompt_path.read_text(encoding='utf-8')
+        return QwenClient.DEFAULT_SYSTEM_PROMPT
 
     def __init__(self):
         # 加载环境变量
@@ -75,7 +81,7 @@ class QwenClient:
     def analyze_pdf(self, pdf_path: str,
                     system_prompt: Optional[str] = None,
                     temperature: float = 0.3,
-                    max_tokens: int = 4096) -> AnalysisResult:
+                    max_tokens: int = 4096) -> Dict[str, Any]:
         """
         分析 PDF 文件
 
@@ -86,7 +92,7 @@ class QwenClient:
             max_tokens: 最大 token 数
 
         Returns:
-            AnalysisResult 对象
+            解析后的 JSON 字典
         """
         file_id = None
         try:
@@ -94,7 +100,7 @@ class QwenClient:
             file_id = self.upload_pdf(pdf_path)
 
             # 构造消息
-            prompt = system_prompt or self.DEFAULT_SYSTEM_PROMPT
+            prompt = system_prompt or self.load_prompt()
             messages = [
                 {
                     "role": "system",
@@ -122,13 +128,8 @@ class QwenClient:
             # 解析结果
             content = response.choices[0].message.content
             result = json.loads(content)
-
-            return AnalysisResult(
-                research_question=result.get('research_question', ''),
-                method=result.get('method', ''),
-                key_findings=result.get('key_findings', []),
-                raw_response=content
-            )
+            result['_raw_response'] = content  # 保留原始响应
+            return result
 
         finally:
             # 清理上传的文件

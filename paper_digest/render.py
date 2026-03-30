@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .db import Database
+from .cache import CacheManager
 
 console = Console()
 
@@ -103,6 +104,7 @@ class QuartoRenderer:
         self.output_dir = Path(output_dir)
         self.papers_dir = self.output_dir / "papers"
         self.db = Database()
+        self.cache = CacheManager()
 
     def setup(self):
         """初始化目录结构"""
@@ -124,10 +126,9 @@ class QuartoRenderer:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # 获取文献和分析数据
+        # 获取文献和分析数据（包括 cache_key）
         cursor.execute("""
-            SELECT p.*, a.research_question, a.method, a.key_findings,
-                   a.status, a.completed_at
+            SELECT p.*, a.status, a.completed_at, a.cache_key
             FROM papers p
             LEFT JOIN analyses a ON p.id = a.paper_id
             WHERE p.id = ?
@@ -147,15 +148,10 @@ class QuartoRenderer:
         # 规范化日期
         normalized_date = normalize_date(row['date'])
 
-        # 生成 front matter
-        front_matter = {
-            "title": row['title'],
-            "author": authors,
-            "date": normalized_date,
-            "zotero_key": row['zotero_key'],
-            "status": row['status'],
-            "analyzed_at": row['completed_at']
-        }
+        # 从缓存读取分析结果
+        analysis_result = None
+        if row['cache_key']:
+            analysis_result = self.cache.get(row['cache_key'])
 
         # 构建 YAML 头部
         yaml_lines = ["---", f"title: \"{row['title']}\""]
@@ -181,32 +177,48 @@ class QuartoRenderer:
         ]
 
         # 添加分析结果
-        if row['status'] == 'completed' and row['research_question']:
-            lines.extend([
-                "## 分析结果",
-                "",
-                "### 研究问题",
-                "",
-                row['research_question'],
-                "",
-                "### 研究方法",
-                "",
-                row['method'],
-                "",
-                "### 主要发现",
-                "",
-            ])
+        if analysis_result:
+            # 提取基本信息
+            basic_info = analysis_result.get('basic_info', {})
+            if basic_info:
+                lines.extend([
+                    "## 基本信息",
+                    "",
+                    f"- **期刊**: {basic_info.get('journal', 'N/A')}",
+                    f"- **年份**: {basic_info.get('year', 'N/A')}",
+                    f"- **通讯作者**: {basic_info.get('corresponding_author', 'N/A')}",
+                    "",
+                ])
 
-            findings = json.loads(row['key_findings']) if row['key_findings'] else []
-            for i, finding in enumerate(findings, 1):
-                lines.append(f"{i}. {finding}")
+            # 添加各个章节
+            sections = [
+                ("研究背景", analysis_result.get('research_background')),
+                ("研究结论", analysis_result.get('research_conclusion')),
+                ("核心创新点", analysis_result.get('innovation_points')),
+                ("实验设计", analysis_result.get('experimental_design')),
+                ("讨论", analysis_result.get('discussion')),
+                ("产业转化可行性", analysis_result.get('industrial_feasibility')),
+            ]
 
-            lines.append("")
+            for title, content in sections:
+                if content:
+                    lines.extend([f"## {title}", "", content, ""])
+
+            # 一句话总结
+            one_sentence = analysis_result.get('one_sentence_summary')
+            if one_sentence:
+                lines.extend([
+                    "## 一句话总结",
+                    "",
+                    f"> {one_sentence}",
+                    "",
+                ])
         else:
+            status = row['status'] or 'never_analyzed'
             lines.extend([
                 "## 分析结果",
                 "",
-                f"> 状态: {row['status']}",
+                f"> 状态: {status}",
                 "",
                 "这篇文献尚未完成分析。",
                 "",
