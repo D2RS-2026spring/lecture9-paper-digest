@@ -8,7 +8,7 @@
 *.quarto_ipynb
 
 # 本地图书目录
-quarto/
+public/
 paper.db
 
 
