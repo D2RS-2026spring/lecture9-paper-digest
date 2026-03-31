@@ -141,12 +141,8 @@ class Renderer:
         .badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: #e8f5e9; color: #2e7d32; }
         .paper-title { font-size: 1.1em; font-weight: 600; margin-bottom: 10px; line-height: 1.4; }
         .paper-one-sentence { padding: 12px; background: #f8f9fa; border-radius: 8px; border-left: 3px solid #667eea; }
-        .paper-detail-view { display: none; padding: 0 20px 20px; }
-        .paper-card.expanded .paper-detail-view { display: block; }
-        .detail-section { margin-top: 20px; }
-        .detail-section h4 { color: #667eea; font-size: 0.9em; font-weight: 600; margin-bottom: 8px; }
-        .detail-section p { color: #444; font-size: 0.95em; line-height: 1.7; white-space: pre-wrap; }
-        .detail-actions { display: flex; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #f0f0f0; }
+        .paper-card { cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+        .paper-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
         .btn { padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; border: none; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
         .btn-primary { background: #667eea; color: white; }
         .btn-secondary { background: #f0f0f0; color: #666; }
@@ -165,11 +161,36 @@ class Renderer:
         .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
         .overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100; }
         .overlay.active { display: block; }
-        @media (max-width: 768px) { .papers-grid { grid-template-columns: 1fr; } }
+        .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); z-index: 101; max-width: 800px; width: 90%; max-height: 85vh; overflow: hidden; }
+        .modal.active { display: block; }
+        .modal-header { padding: 20px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .modal-header h2 { font-size: 1.3em; margin: 0; line-height: 1.4; }
+        .modal-header .meta { margin-top: 8px; font-size: 0.9em; opacity: 0.9; }
+        .modal-body { padding: 24px; overflow-y: auto; max-height: calc(85vh - 140px); }
+        .modal-section { margin-bottom: 20px; }
+        .modal-section:last-child { margin-bottom: 0; }
+        .modal-section h4 { color: #667eea; font-size: 0.95em; font-weight: 600; margin-bottom: 10px; }
+        .modal-section p { color: #444; font-size: 0.95em; line-height: 1.8; white-space: pre-wrap; }
+        .modal-footer { padding: 16px 24px; border-top: 1px solid #f0f0f0; display: flex; gap: 10px; justify-content: flex-end; }
+        .modal-close { position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+        .modal-close:hover { background: rgba(255,255,255,0.3); }
+        @media (max-width: 768px) { .papers-grid { grid-template-columns: 1fr; } .modal { width: 95%; max-height: 90vh; } .modal-body { max-height: calc(90vh - 140px); } }
     </style>
 </head>
 <body>
     <div class="overlay" id="overlay"></div>
+    <div class="modal" id="modal">
+        <button class="modal-close" onclick="closeModal()">×</button>
+        <div class="modal-header" id="modal-header">
+            <h2 id="modal-title"></h2>
+            <div class="meta" id="modal-meta"></div>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-footer">
+            <a id="modal-zotero-link" href="#" target="_blank" class="btn btn-primary">📚 在 Zotero 中打开</a>
+            <button class="btn btn-secondary" onclick="closeModal()">✕ 关闭</button>
+        </div>
+    </div>
     <header>
         <h1>Paper Digest</h1>
         <p>基于 Zotero + AI 的科研文献知识库</p>
@@ -288,9 +309,8 @@ class Renderer:
             renderCurrentView(filteredPapers.slice(start, end));
             renderPagination(totalPages);
             updateURL();
-            if (expandedPaperId && currentView === 'grid') {
-                const card = document.querySelector(`[data-paper-id="${expandedPaperId}"]`);
-                if (card) expandCard(card);
+            if (expandedPaperId) {
+                openModal(expandedPaperId);
             }
         }
 
@@ -311,33 +331,56 @@ class Renderer:
             grid.innerHTML = papers.map(paper => renderPaperCard(paper)).join('');
             papers.forEach(paper => {
                 const card = document.querySelector(`[data-paper-id="${paper.id}"]`);
-                card.querySelector('.paper-summary-view').addEventListener('click', () => { if (!card.classList.contains('expanded')) expandCard(card); });
+                card.addEventListener('click', () => openModal(paper.id));
             });
         }
 
         function renderPaperCard(paper) {
             const analysis = paper.analysis || {};
             const hasAnalysis = paper.status === 'completed' && analysis.one_sentence_summary;
-            return `<div class="paper-card" data-paper-id="${paper.id}"><div class="paper-summary-view"><div class="paper-header"><span class="paper-id">#${String(paper.id).padStart(4, '0')}</span><div class="paper-badges"><span class="badge">${paper.year || ''}</span></div></div><div class="paper-title">${escapeHtml(paper.title)}</div><div class="paper-meta">${escapeHtml(paper.journal || '')} · ${paper.authors?.slice(0, 2).join(', ') || ''}</div>${hasAnalysis ? `<div class="paper-one-sentence">${escapeHtml(analysis.one_sentence_summary)}</div>` : ''}</div><div class="paper-detail-view">${hasAnalysis ? renderAnalysisDetail(analysis) : '<p>此文献尚未完成 AI 分析</p>'}<div class="detail-actions"><a href="${paper.zotero_link}" target="_blank" class="btn btn-primary">📚 在 Zotero 中打开</a><button class="btn btn-secondary" onclick="closeExpanded()">✕ 关闭</button></div></div></div>`;
+            return `<div class="paper-card" data-paper-id="${paper.id}"><div class="paper-summary-view"><div class="paper-header"><span class="paper-id">#${String(paper.id).padStart(4, '0')}</span><div class="paper-badges"><span class="badge">${paper.year || ''}</span></div></div><div class="paper-title">${escapeHtml(paper.title)}</div><div class="paper-meta">${escapeHtml(paper.journal || '')} · ${paper.authors?.slice(0, 2).join(', ') || ''}</div>${hasAnalysis ? `<div class="paper-one-sentence">${escapeHtml(analysis.one_sentence_summary)}</div>` : ''}</div></div>`;
         }
 
-        function renderAnalysisDetail(analysis) {
-            const sections = [{key: 'research_background', title: '研究背景'}, {key: 'research_conclusion', title: '研究结论'}, {key: 'innovation_points', title: '核心创新点'}, {key: 'experimental_design', title: '实验设计'}, {key: 'discussion', title: '讨论'}, {key: 'industrial_feasibility', title: '产业转化可行性'}];
-            return sections.map(section => { const content = analysis[section.key]; if (!content) return ''; return `<div class="detail-section"><h4>${section.title}</h4><p>${escapeHtml(content)}</p></div>`; }).join('');
-        }
+        function openModal(paperId) {
+            const paper = allPapers.find(p => p.id === paperId);
+            if (!paper) return;
 
-        function expandCard(card) {
-            expandedPaperId = parseInt(card.dataset.paperId);
-            card.classList.add('expanded');
+            expandedPaperId = paperId;
+            document.getElementById('modal-title').textContent = paper.title;
+            document.getElementById('modal-meta').textContent = `${paper.authors?.join(', ') || ''} · ${paper.journal || ''} · ${paper.year || ''}`;
+            document.getElementById('modal-zotero-link').href = paper.zotero_link;
+
+            const analysis = paper.analysis || {};
+            const hasAnalysis = paper.status === 'completed' && analysis.one_sentence_summary;
+
+            if (hasAnalysis) {
+                const sections = [
+                    {key: 'one_sentence_summary', title: '一句话解读'},
+                    {key: 'research_background', title: '研究背景'},
+                    {key: 'research_conclusion', title: '研究结论'},
+                    {key: 'innovation_points', title: '核心创新点'},
+                    {key: 'experimental_design', title: '实验设计'},
+                    {key: 'discussion', title: '讨论'},
+                    {key: 'industrial_feasibility', title: '产业转化可行性'}
+                ];
+                document.getElementById('modal-body').innerHTML = sections.map(section => {
+                    const content = analysis[section.key];
+                    if (!content) return '';
+                    return `<div class="modal-section"><h4>${section.title}</h4><p>${escapeHtml(content)}</p></div>`;
+                }).join('');
+            } else {
+                document.getElementById('modal-body').innerHTML = '<p style="color: #666; text-align: center; padding: 40px;">此文献尚未完成 AI 分析</p>';
+            }
+
             document.getElementById('overlay').classList.add('active');
+            document.getElementById('modal').classList.add('active');
             document.body.style.overflow = 'hidden';
             updateURL();
         }
 
-        function closeExpanded() {
-            const expanded = document.querySelector('.paper-card.expanded');
-            if (expanded) expanded.classList.remove('expanded');
+        function closeModal() {
             document.getElementById('overlay').classList.remove('active');
+            document.getElementById('modal').classList.remove('active');
             document.body.style.overflow = '';
             expandedPaperId = null;
             updateURL();
@@ -378,8 +421,8 @@ class Renderer:
         document.getElementById('prev-page').addEventListener('click', () => { if (currentPage > 1) { currentPage--; applyFilters(); } });
         document.getElementById('next-page').addEventListener('click', () => { const totalPages = Math.ceil(filteredPapers.length / perPage); if (currentPage < totalPages) { currentPage++; applyFilters(); } });
         document.querySelectorAll('.view-btn').forEach(btn => { btn.addEventListener('click', () => { document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); currentView = btn.dataset.view; const totalPages = Math.ceil(filteredPapers.length / perPage) || 1; const start = (currentPage - 1) * perPage; const end = start + perPage; updateURL(); renderCurrentView(filteredPapers.slice(start, end)); }); });
-        document.getElementById('overlay').addEventListener('click', closeExpanded);
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeExpanded(); });
+        document.getElementById('overlay').addEventListener('click', closeModal);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
         init();
     </script>

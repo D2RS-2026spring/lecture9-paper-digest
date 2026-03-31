@@ -115,11 +115,14 @@ def render():
 @main.command()
 @click.option('--port', '-p', default=8080, help='端口号')
 @click.option('--host', '-h', default='localhost', help='主机地址')
-def serve(port: int, host: str):
+@click.option('--no-open', is_flag=True, help='不自动打开浏览器')
+def serve(port: int, host: str, no_open: bool):
     """启动本地服务器预览"""
     import http.server
     import socketserver
     import os
+    import webbrowser
+    import threading
 
     public_dir = Path('public')
     if not public_dir.exists():
@@ -128,8 +131,37 @@ def serve(port: int, host: str):
 
     os.chdir(public_dir)
 
-    with socketserver.TCPServer((host, port), http.server.SimpleHTTPRequestHandler) as httpd:
-        console.print(f"[green]✓[/green] 服务器启动: http://{host}:{port}/")
+    url = f"http://{host}:{port}/"
+
+    # 延迟打开浏览器，确保服务器已启动
+    def open_browser():
+        import time
+        time.sleep(0.5)
+        webbrowser.open(url)
+
+    if not no_open:
+        threading.Thread(target=open_browser, daemon=True).start()
+
+    # 尝试绑定端口，如果被占用则尝试下一个
+    max_attempts = 10
+    for attempt in range(max_attempts):
+        try:
+            httpd = socketserver.TCPServer((host, port), http.server.SimpleHTTPRequestHandler)
+            break
+        except OSError as e:
+            if e.errno == 48 and attempt < max_attempts - 1:  # Address already in use
+                port += 1
+                url = f"http://{host}:{port}/"
+            else:
+                raise
+    else:
+        console.print(f"[red]错误: 无法找到可用端口 (尝试了 {port-8080+1} 个端口)[/red]")
+        raise click.Abort()
+
+    with httpd:
+        console.print(f"[green]✓[/green] 服务器启动: {url}")
+        if not no_open:
+            console.print("[green]✓[/green] 正在打开浏览器...")
         console.print("按 Ctrl+C 停止")
         try:
             httpd.serve_forever()
