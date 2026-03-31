@@ -1,380 +1,397 @@
-"""Quarto 渲染模块 - 生成 Markdown/Quarto 文件"""
+"""渲染模块 - 生成单页面应用"""
 
 import json
-import re
+import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Any
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
-
-from .cache import CacheManager
-from .db import Database
 
 console = Console()
 
 
-def normalize_date(date_str: Optional[str]) -> str:
-    """
-    将 Zotero 日期格式规范化为 Quarto 兼容的日期格式
+class Renderer:
+    """渲染器 - 生成单页面文献展示网站"""
 
-    支持格式：
-    - 2023 -> 2023-01-01
-    - 2023-03 -> 2023-03-01
-    - 2023-03-15 -> 2023-03-15
-    - 2023/03/15 -> 2023-03-15
-    - 2024年12月16日 -> 2024-12-16
-    - March 2023 -> 2023-03-01
-    - 空值 -> 空字符串
-    """
-    if not date_str or date_str.strip() == '':
-        return ''
-
-    date_str = date_str.strip()
-
-    # 已经是完整日期格式 YYYY-MM-DD
-    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
-        return date_str
-
-    # 只有年份 YYYY
-    if re.match(r'^\d{4}$', date_str):
-        return f"{date_str}-01-01"
-
-    # 年月格式 YYYY-MM 或 YYYY/MM
-    if re.match(r'^\d{4}[-/]\d{2}$', date_str):
-        return f"{date_str[:4]}-{date_str[5:7]}-01"
-
-    # 斜杠格式 YYYY/MM/DD
-    if re.match(r'^\d{4}/\d{2}/\d{2}$', date_str):
-        return date_str.replace('/', '-')
-
-    # 斜杠格式 YYYY/M/D（补零）
-    slash_match = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})$', date_str)
-    if slash_match:
-        year, month, day = slash_match.groups()
-        return f"{year}-{int(month):02d}-{int(day):02d}"
-
-    # MM/YYYY 格式（如 06/2022 -> 2022-06-01）
-    mm_yyyy_match = re.match(r'^(\d{1,2})/(\d{4})$', date_str)
-    if mm_yyyy_match:
-        month, year = mm_yyyy_match.groups()
-        return f"{year}-{int(month):02d}-01"
-
-    # 中文日期格式 2024年12月16日
-    chinese_match = re.match(r'^(\d{4})年(\d{1,2})月(\d{1,2})日$', date_str)
-    if chinese_match:
-        year, month, day = chinese_match.groups()
-        return f"{year}-{int(month):02d}-{int(day):02d}"
-
-    # 中文年月格式 2024年12月
-    chinese_ym_match = re.match(r'^(\d{4})年(\d{1,2})月$', date_str)
-    if chinese_ym_match:
-        year, month = chinese_ym_match.groups()
-        return f"{year}-{int(month):02d}-01"
-
-    # 英文月份格式如 "March 2023" 或 "Mar 15, 2023" 或 "2021 Oct 21"
-    try:
-        formats = [
-            '%B %Y', '%b %Y',           # March 2023, Mar 2023
-            '%B %d, %Y', '%b %d, %Y',   # March 15, 2023, Mar 15, 2023
-            '%d %B %Y', '%d %b %Y',     # 15 March 2023, 15 Mar 2023
-            '%Y %b %d', '%Y %B %d',     # 2021 Oct 21, 2021 October 21
-        ]
-        for fmt in formats:
-            try:
-                parsed = datetime.strptime(date_str, fmt)
-                if fmt in ['%B %Y', '%b %Y']:
-                    return parsed.strftime('%Y-%m-01')
-                return parsed.strftime('%Y-%m-%d')
-            except ValueError:
-                continue
-    except Exception:
-        pass
-
-    # 无法解析，原样返回（Quarto 会忽略无效日期）
-    console.print(f"[yellow]警告：无法解析日期 '{date_str}'，将忽略[/yellow]")
-    return ''
-
-
-class QuartoRenderer:
-    """Quarto 渲染器"""
-
-    def __init__(self, output_dir: str = "quarto"):
+    def __init__(self, output_dir: str = "public"):
         self.output_dir = Path(output_dir)
-        self.papers_dir = self.output_dir / "papers"
-        self.db = Database()
-        self.cache = CacheManager()
+        self.db_path = "paper.db"
 
     def setup(self):
-        """初始化目录结构"""
+        """初始化目录"""
         self.output_dir.mkdir(exist_ok=True)
-        self.papers_dir.mkdir(exist_ok=True)
 
-    def render_paper(self, paper_id: int) -> Optional[Path]:
-        """
-        渲染单篇文献为 Quarto 文件
-
-        Args:
-            paper_id: 文献 ID
-
-        Returns:
-            生成的文件路径
-        """
-        import sqlite3
-        conn = sqlite3.connect("paper.db")
+    def export_papers_json(self) -> Path:
+        """导出所有文献数据为 JSON"""
+        conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # 获取文献和分析数据（包括 cache_key）
         cursor.execute("""
-            SELECT p.*, a.status, a.completed_at, a.cache_key
+            SELECT p.*, a.status, a.cache_key, a.completed_at
             FROM papers p
             LEFT JOIN analyses a ON p.id = a.paper_id
-            WHERE p.id = ?
-            ORDER BY a.id DESC
-            LIMIT 1
-        """, (paper_id,))
+            ORDER BY p.id DESC
+        """)
 
-        row = cursor.fetchone()
+        papers = []
+        for row in cursor.fetchall():
+            paper = {
+                "id": row["id"],
+                "title": row["title"],
+                "authors": json.loads(row["authors"]) if row["authors"] else [],
+                "date": row["date"],
+                "year": self._extract_year(row["date"]),
+                "item_type": row["item_type"],
+                "zotero_key": row["zotero_key"],
+                "zotero_link": row["zotero_link"],
+                "created_at": row["created_at"],
+                "status": row["status"] or "never_analyzed",
+                "completed_at": row["completed_at"],
+            }
+
+            if row["cache_key"]:
+                analysis = self._load_analysis(row["cache_key"])
+                if analysis:
+                    paper["analysis"] = {
+                        "basic_info": analysis.get("basic_info", {}),
+                        "research_background": analysis.get("research_background", ""),
+                        "research_conclusion": analysis.get("research_conclusion", ""),
+                        "innovation_points": analysis.get("innovation_points", ""),
+                        "experimental_design": analysis.get("experimental_design", ""),
+                        "discussion": analysis.get("discussion", ""),
+                        "industrial_feasibility": analysis.get("industrial_feasibility", ""),
+                        "one_sentence_summary": analysis.get("one_sentence_summary", ""),
+                    }
+                    paper["journal"] = analysis.get("basic_info", {}).get("journal", "")
+                    paper["year_published"] = analysis.get("basic_info", {}).get("year", "")
+                else:
+                    paper["analysis"] = None
+                    paper["journal"] = ""
+                    paper["year_published"] = ""
+            else:
+                paper["analysis"] = None
+                paper["journal"] = ""
+                paper["year_published"] = ""
+
+            papers.append(paper)
+
         conn.close()
 
-        if not row:
-            return None
+        json_path = self.output_dir / "papers.json"
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(papers, f, ensure_ascii=False, indent=2)
 
-        # 解析作者
-        authors = json.loads(row['authors']) if row['authors'] else []
+        console.print(f"[green]✓[/green] 导出 {len(papers)} 篇文献: {json_path}")
+        return json_path
 
-        # 规范化日期
-        normalized_date = normalize_date(row['date'])
+    def _extract_year(self, date_str: Optional[str]) -> int:
+        if not date_str:
+            return 0
+        import re
+        match = re.search(r'\d{4}', date_str)
+        return int(match.group()) if match else 0
 
-        # 从缓存读取分析结果
-        analysis_result = None
-        if row['cache_key']:
-            analysis_result = self.cache.get(row['cache_key'])
+    def _load_analysis(self, cache_key: str) -> Optional[Dict]:
+        cache_path = Path(".cache") / f"{cache_key}.json"
+        if cache_path.exists():
+            try:
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return None
 
-        # 构建 YAML 头部
-        yaml_lines = ["---", f"title: \"{row['title']}\""]
-        if normalized_date:
-            yaml_lines.append(f"date: {normalized_date}")
-        yaml_lines.extend([
-            f"zotero-key: {row['zotero_key']}",
-            f"zotero-link: {row['zotero_link']}",
-            "---",
-            ""
-        ])
+    def generate_html(self) -> Path:
+        html_path = self.output_dir / "index.html"
+        html_content = self._get_html_template()
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        console.print(f"[green]✓[/green] 生成页面: {html_path}")
+        return html_path
 
-        # 构建内容
-        lines = yaml_lines + [
-            "## 文献信息",
-            "",
-            f"- **标题**: {row['title']}",
-            f"- **作者**: {', '.join(authors) if authors else 'N/A'}",
-            f"- **日期**: {row['date'] or 'N/A'}",
-            f"- **类型**: {row['item_type']}",
-            f"- [在 Zotero 中打开]({row['zotero_link']})",
-            "",
-        ]
+    def _get_html_template(self) -> str:
+        return '''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paper Digest - 文献知识库</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8f9fa; color: #333; line-height: 1.6; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 20px; text-align: center; margin-bottom: 30px; }
+        header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .stats-bar { display: flex; justify-content: center; gap: 40px; margin-top: 20px; flex-wrap: wrap; }
+        .stat-value { font-size: 2em; font-weight: bold; }
+        .controls { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; align-items: center; }
+        input, select { padding: 10px 14px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; }
+        .search-box { flex: 1; min-width: 200px; }
+        .search-box input { width: 100%; }
+        .view-switcher { display: flex; gap: 8px; background: #f0f0f0; padding: 4px; border-radius: 8px; }
+        .view-btn { padding: 6px 12px; border: none; background: transparent; border-radius: 6px; cursor: pointer; font-size: 14px; color: #666; }
+        .view-btn.active { background: white; color: #667eea; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .papers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .paper-card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden; border: 1px solid #f0f0f0; }
+        .paper-summary-view { padding: 20px; cursor: pointer; }
+        .paper-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+        .paper-id { color: #999; font-size: 12px; font-family: monospace; }
+        .badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: #e8f5e9; color: #2e7d32; }
+        .paper-title { font-size: 1.1em; font-weight: 600; margin-bottom: 10px; line-height: 1.4; }
+        .paper-one-sentence { padding: 12px; background: #f8f9fa; border-radius: 8px; border-left: 3px solid #667eea; }
+        .paper-detail-view { display: none; padding: 0 20px 20px; }
+        .paper-card.expanded .paper-detail-view { display: block; }
+        .detail-section { margin-top: 20px; }
+        .detail-section h4 { color: #667eea; font-size: 0.9em; font-weight: 600; margin-bottom: 8px; }
+        .detail-section p { color: #444; font-size: 0.95em; line-height: 1.7; white-space: pre-wrap; }
+        .detail-actions { display: flex; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #f0f0f0; }
+        .btn { padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; border: none; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-secondary { background: #f0f0f0; color: #666; }
+        .papers-list { display: flex; flex-direction: column; gap: 24px; margin-bottom: 30px; }
+        .paper-list-item { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 24px; border: 1px solid #f0f0f0; }
+        .paper-list-item .paper-title { font-size: 1.2em; font-weight: 600; margin-bottom: 10px; }
+        .paper-list-item .paper-meta-row { color: #666; font-size: 0.9em; margin-bottom: 12px; }
+        .paper-list-item .paper-one-sentence { margin-top: 16px; padding: 16px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea; }
+        .paper-list-item .full-analysis { margin-top: 20px; padding-top: 20px; border-top: 1px solid #f0f0f0; }
+        .paper-list-item .analysis-section { margin-bottom: 16px; }
+        .paper-list-item .analysis-section h5 { color: #667eea; font-size: 0.85em; font-weight: 600; margin-bottom: 6px; }
+        .paper-list-item .analysis-section p { color: #444; font-size: 0.95em; line-height: 1.7; white-space: pre-wrap; }
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 30px; }
+        .pagination button { padding: 10px 20px; border: 1px solid #e0e0e0; background: white; border-radius: 8px; cursor: pointer; }
+        .pagination button:hover:not(:disabled) { background: #667eea; color: white; border-color: #667eea; }
+        .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100; }
+        .overlay.active { display: block; }
+        @media (max-width: 768px) { .papers-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="overlay" id="overlay"></div>
+    <header>
+        <h1>Paper Digest</h1>
+        <p>基于 Zotero + AI 的科研文献知识库</p>
+        <div class="stats-bar">
+            <div class="stat-item"><div class="stat-value" id="total-count">-</div><div class="stat-label">总文献</div></div>
+            <div class="stat-item"><div class="stat-value" id="completed-count">-</div><div class="stat-label">已解读</div></div>
+        </div>
+    </header>
+    <div class="container">
+        <div class="controls">
+            <div class="control-group search-box"><input type="text" id="search" placeholder="搜索标题、作者、解读内容..."></div>
+            <div class="control-group"><label>排序:</label><select id="sort-by"><option value="created_at_desc">生成时间 (新→旧)</option><option value="created_at_asc">生成时间 (旧→新)</option><option value="date_desc">发表时间 (新→旧)</option><option value="date_asc">发表时间 (旧→新)</option><option value="title">标题</option></select></div>
+            <div class="control-group"><label>每页:</label><select id="per-page"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option></select></div>
+            <div class="control-group">
+                <div class="view-switcher">
+                    <button class="view-btn active" data-view="grid">⊞ 卡片</button>
+                    <button class="view-btn" data-view="list">☰ 列表</button>
+                </div>
+            </div>
+        </div>
+        <div class="loading" id="loading">加载中...</div>
+        <div class="no-results" id="no-results" style="display: none;">没有找到匹配的文献</div>
+        <div class="papers-grid" id="papers-grid"></div>
+        <div class="papers-list" id="papers-list" style="display: none;"></div>
+        <div class="pagination" id="pagination" style="display: none;">
+            <button id="prev-page">← 上一页</button>
+            <span class="page-info" id="page-info"></span>
+            <button id="next-page">下一页 →</button>
+        </div>
+    </div>
+    <script>
+        let allPapers = [];
+        let filteredPapers = [];
+        let currentPage = 1;
+        let perPage = 20;
+        let expandedPaperId = null;
+        let currentView = 'grid';
 
-        # 添加分析结果
-        if analysis_result:
-            # 提取基本信息
-            basic_info = analysis_result.get('basic_info', {})
-            if basic_info:
-                lines.extend([
-                    "## 基本信息",
-                    "",
-                    f"- **期刊**: {basic_info.get('journal', 'N/A')}",
-                    f"- **年份**: {basic_info.get('year', 'N/A')}",
-                    f"- **通讯作者**: {basic_info.get('corresponding_author', 'N/A')}",
-                    "",
-                ])
+        async function init() {
+            try {
+                const response = await fetch('papers.json');
+                allPapers = await response.json();
+                restoreStateFromURL();
+                updateStats();
+                applyFilters();
+                document.getElementById('loading').style.display = 'none';
+            } catch (error) {
+                console.error('加载失败:', error);
+                document.getElementById('loading').textContent = '加载失败，请使用本地服务器: paper-digest serve';
+            }
+        }
 
-            # 添加各个章节
-            sections = [
-                ("研究背景", analysis_result.get('research_background')),
-                ("研究结论", analysis_result.get('research_conclusion')),
-                ("核心创新点", analysis_result.get('innovation_points')),
-                ("实验设计", analysis_result.get('experimental_design')),
-                ("讨论", analysis_result.get('discussion')),
-                ("产业转化可行性", analysis_result.get('industrial_feasibility')),
-            ]
+        function restoreStateFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            const sortBy = params.get('sort');
+            if (sortBy) document.getElementById('sort-by').value = sortBy;
+            const perPageParam = params.get('perPage');
+            if (perPageParam) { perPage = parseInt(perPageParam); document.getElementById('per-page').value = perPageParam; }
+            const page = params.get('page');
+            if (page) currentPage = parseInt(page);
+            const search = params.get('search');
+            if (search) document.getElementById('search').value = search;
+            const paperId = params.get('paper');
+            if (paperId) expandedPaperId = parseInt(paperId);
+            const view = params.get('view');
+            if (view && (view === 'grid' || view === 'list')) {
+                currentView = view;
+                document.querySelectorAll('.view-btn').forEach(btn => { btn.classList.toggle('active', btn.dataset.view === view); });
+            }
+        }
 
-            for title, content in sections:
-                if content:
-                    # 如果内容是列表，转换为带序号的字符串
-                    if isinstance(content, list):
-                        content_str = "\\n".join(f"{i+1}. {item}" for i, item in enumerate(content))
-                    else:
-                        content_str = str(content)
-                    lines.extend([f"## {title}", "", content_str, ""])
+        function updateURL() {
+            const params = new URLSearchParams();
+            if (currentPage > 1) params.set('page', currentPage);
+            if (perPage !== 20) params.set('perPage', perPage);
+            const sortBy = document.getElementById('sort-by').value;
+            if (sortBy !== 'created_at_desc') params.set('sort', sortBy);
+            const search = document.getElementById('search').value.trim();
+            if (search) params.set('search', search);
+            if (expandedPaperId) params.set('paper', expandedPaperId);
+            if (currentView !== 'grid') params.set('view', currentView);
+            const newURL = params.toString() ? `${window.location.pathname}?${params.toString()}` : window.location.pathname;
+            window.history.replaceState({}, '', newURL);
+        }
 
-            # 一句话总结
-            one_sentence = analysis_result.get('one_sentence_summary')
-            if one_sentence:
-                lines.extend([
-                    "## 一句话总结",
-                    "",
-                    f"> {one_sentence}",
-                    "",
-                ])
-        else:
-            status = row['status'] or 'never_analyzed'
-            lines.extend([
-                "## 分析结果",
-                "",
-                f"> 状态: {status}",
-                "",
-                "这篇文献尚未完成分析。",
-                "",
-            ])
+        function updateStats() {
+            document.getElementById('total-count').textContent = allPapers.length;
+            const completed = allPapers.filter(p => p.status === 'completed').length;
+            document.getElementById('completed-count').textContent = completed;
+        }
 
-        # 写入文件
-        safe_title = "".join(c for c in row['title'][:50] if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        safe_title = safe_title.replace(' ', '-')
-        filename = f"{row['id']:04d}-{safe_title or 'untitled'}.qmd"
-        filepath = self.papers_dir / filename
+        function applyFilters() {
+            const searchTerm = document.getElementById('search').value.toLowerCase();
+            const sortBy = document.getElementById('sort-by').value;
+            filteredPapers = allPapers.filter(paper => {
+                if (!searchTerm) return true;
+                const analysis = paper.analysis || {};
+                const searchable = [paper.title, paper.authors?.join(' '), paper.journal, analysis.one_sentence_summary, analysis.research_background, analysis.research_conclusion].join(' ').toLowerCase();
+                return searchable.includes(searchTerm);
+            });
+            filteredPapers.sort((a, b) => {
+                switch (sortBy) {
+                    case 'created_at_desc': return (b.created_at || '').localeCompare(a.created_at || '');
+                    case 'created_at_asc': return (a.created_at || '').localeCompare(b.created_at || '');
+                    case 'date_desc': return (b.year || 0) - (a.year || 0);
+                    case 'date_asc': return (a.year || 0) - (b.year || 0);
+                    case 'title': return (a.title || '').localeCompare(b.title || '');
+                    default: return 0;
+                }
+            });
+            const totalPages = Math.ceil(filteredPapers.length / perPage) || 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
+            const start = (currentPage - 1) * perPage;
+            const end = start + perPage;
+            renderCurrentView(filteredPapers.slice(start, end));
+            renderPagination(totalPages);
+            updateURL();
+            if (expandedPaperId && currentView === 'grid') {
+                const card = document.querySelector(`[data-paper-id="${expandedPaperId}"]`);
+                if (card) expandCard(card);
+            }
+        }
 
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines))
+        function renderCurrentView(papers) {
+            if (currentView === 'list') {
+                document.getElementById('papers-grid').style.display = 'none';
+                renderPapersList(papers);
+            } else {
+                document.getElementById('papers-list').style.display = 'none';
+                renderPapersGrid(papers);
+            }
+        }
 
-        return filepath
+        function renderPapersGrid(papers) {
+            const grid = document.getElementById('papers-grid');
+            if (papers.length === 0) { grid.style.display = 'none'; document.getElementById('no-results').style.display = 'block'; return; }
+            grid.style.display = 'grid'; document.getElementById('no-results').style.display = 'none';
+            grid.innerHTML = papers.map(paper => renderPaperCard(paper)).join('');
+            papers.forEach(paper => {
+                const card = document.querySelector(`[data-paper-id="${paper.id}"]`);
+                card.querySelector('.paper-summary-view').addEventListener('click', () => { if (!card.classList.contains('expanded')) expandCard(card); });
+            });
+        }
 
-    def render_all(self) -> List[Path]:
-        """
-        渲染所有已完成的文献
+        function renderPaperCard(paper) {
+            const analysis = paper.analysis || {};
+            const hasAnalysis = paper.status === 'completed' && analysis.one_sentence_summary;
+            return `<div class="paper-card" data-paper-id="${paper.id}"><div class="paper-summary-view"><div class="paper-header"><span class="paper-id">#${String(paper.id).padStart(4, '0')}</span><div class="paper-badges"><span class="badge">${paper.year || ''}</span></div></div><div class="paper-title">${escapeHtml(paper.title)}</div><div class="paper-meta">${escapeHtml(paper.journal || '')} · ${paper.authors?.slice(0, 2).join(', ') || ''}</div>${hasAnalysis ? `<div class="paper-one-sentence">${escapeHtml(analysis.one_sentence_summary)}</div>` : ''}</div><div class="paper-detail-view">${hasAnalysis ? renderAnalysisDetail(analysis) : '<p>此文献尚未完成 AI 分析</p>'}<div class="detail-actions"><a href="${paper.zotero_link}" target="_blank" class="btn btn-primary">📚 在 Zotero 中打开</a><button class="btn btn-secondary" onclick="closeExpanded()">✕ 关闭</button></div></div></div>`;
+        }
 
-        Returns:
-            生成的文件路径列表
-        """
+        function renderAnalysisDetail(analysis) {
+            const sections = [{key: 'research_background', title: '研究背景'}, {key: 'research_conclusion', title: '研究结论'}, {key: 'innovation_points', title: '核心创新点'}, {key: 'experimental_design', title: '实验设计'}, {key: 'discussion', title: '讨论'}, {key: 'industrial_feasibility', title: '产业转化可行性'}];
+            return sections.map(section => { const content = analysis[section.key]; if (!content) return ''; return `<div class="detail-section"><h4>${section.title}</h4><p>${escapeHtml(content)}</p></div>`; }).join('');
+        }
+
+        function expandCard(card) {
+            expandedPaperId = parseInt(card.dataset.paperId);
+            card.classList.add('expanded');
+            document.getElementById('overlay').classList.add('active');
+            document.body.style.overflow = 'hidden';
+            updateURL();
+        }
+
+        function closeExpanded() {
+            const expanded = document.querySelector('.paper-card.expanded');
+            if (expanded) expanded.classList.remove('expanded');
+            document.getElementById('overlay').classList.remove('active');
+            document.body.style.overflow = '';
+            expandedPaperId = null;
+            updateURL();
+        }
+
+        function renderPapersList(papers) {
+            const list = document.getElementById('papers-list');
+            if (papers.length === 0) { list.style.display = 'none'; document.getElementById('no-results').style.display = 'block'; return; }
+            list.style.display = 'flex'; document.getElementById('no-results').style.display = 'none';
+            list.innerHTML = papers.map(paper => renderPaperListItem(paper)).join('');
+        }
+
+        function renderPaperListItem(paper) {
+            const analysis = paper.analysis || {};
+            const hasAnalysis = paper.status === 'completed' && analysis.one_sentence_summary;
+            return `<div class="paper-list-item"><div class="paper-header"><span class="paper-id">#${String(paper.id).padStart(4, '0')}</span><div class="paper-badges"><span class="badge">${paper.year || ''}</span>${paper.journal ? `<span class="badge">${escapeHtml(paper.journal)}</span>` : ''}</div></div><div class="paper-title">${escapeHtml(paper.title)}</div><div class="paper-meta-row">${paper.authors?.join(', ') || ''}</div>${hasAnalysis ? `<div class="paper-one-sentence"><strong>一句话解读：</strong>${escapeHtml(analysis.one_sentence_summary)}</div><div class="full-analysis">${renderAnalysisSections(analysis)}</div>` : '<p>此文献尚未完成 AI 分析</p>'}<div class="detail-actions" style="margin-top: 20px;"><a href="${paper.zotero_link}" target="_blank" class="btn btn-primary">📚 在 Zotero 中打开</a></div></div>`;
+        }
+
+        function renderAnalysisSections(analysis) {
+            const sections = [{key: 'research_background', title: '研究背景'}, {key: 'research_conclusion', title: '研究结论'}, {key: 'innovation_points', title: '核心创新点'}, {key: 'experimental_design', title: '实验设计'}, {key: 'discussion', title: '讨论'}, {key: 'industrial_feasibility', title: '产业转化可行性'}];
+            return sections.map(section => { const content = analysis[section.key]; if (!content) return ''; return `<div class="analysis-section"><h5>${section.title}</h5><p>${escapeHtml(content)}</p></div>`; }).join('');
+        }
+
+        function renderPagination(totalPages) {
+            const pagination = document.getElementById('pagination');
+            if (totalPages <= 1) { pagination.style.display = 'none'; return; }
+            pagination.style.display = 'flex';
+            document.getElementById('page-info').textContent = `${currentPage} / ${totalPages}`;
+            document.getElementById('prev-page').disabled = currentPage === 1;
+            document.getElementById('next-page').disabled = currentPage === totalPages;
+        }
+
+        function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+        document.getElementById('search').addEventListener('input', () => { currentPage = 1; applyFilters(); });
+        document.getElementById('sort-by').addEventListener('change', () => { applyFilters(); });
+        document.getElementById('per-page').addEventListener('change', (e) => { perPage = parseInt(e.target.value); currentPage = 1; applyFilters(); });
+        document.getElementById('prev-page').addEventListener('click', () => { if (currentPage > 1) { currentPage--; applyFilters(); } });
+        document.getElementById('next-page').addEventListener('click', () => { const totalPages = Math.ceil(filteredPapers.length / perPage); if (currentPage < totalPages) { currentPage++; applyFilters(); } });
+        document.querySelectorAll('.view-btn').forEach(btn => { btn.addEventListener('click', () => { document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); currentView = btn.dataset.view; const totalPages = Math.ceil(filteredPapers.length / perPage) || 1; const start = (currentPage - 1) * perPage; const end = start + perPage; updateURL(); renderCurrentView(filteredPapers.slice(start, end)); }); });
+        document.getElementById('overlay').addEventListener('click', closeExpanded);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeExpanded(); });
+
+        init();
+    </script>
+</body>
+</html>'''
+
+    def render_all(self):
+        """执行完整渲染"""
         self.setup()
-
-        # 获取所有文献
-        papers = self.db.get_all_papers()
-
-        rendered = []
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            task = progress.add_task("渲染文献...", total=len(papers))
-
-            for paper in papers:
-                progress.update(task, description=f"渲染: {paper.title[:30]}...")
-
-                filepath = self.render_paper(paper.id)
-                if filepath:
-                    rendered.append(filepath)
-
-                progress.advance(task)
-
-        console.print(f"[green]✓[/green] 渲染完成：{len(rendered)} 篇文献")
-        return rendered
-
-    def generate_index(self):
-        """生成索引文件"""
-        # 获取统计
-        stats = self.db.get_stats()
-
-        # 获取所有文献
-        papers = self.db.get_all_papers()
-
-        lines = [
-            "---",
-            f"title: \"Paper Digest - 文献知识库\"",
-            f"date: {datetime.now().strftime('%Y-%m-%d')}",
-            "---",
-            "",
-            "# Paper Digest",
-            "",
-            "基于 Zotero + Qwen 的科研文献知识编译系统",
-            "",
-            "## 统计",
-            "",
-            f"- 总文献数: {stats['total_papers']}",
-            f"- 已完成分析: {stats['completed']}",
-            f"- 待分析: {stats['pending'] + stats['never_analyzed']}",
-            "",
-            "## 文献列表",
-            "",
-        ]
-
-        import sqlite3
-        conn = sqlite3.connect("paper.db")
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        for paper in papers:
-            cursor.execute("""
-                SELECT status FROM analyses
-                WHERE paper_id = ?
-                ORDER BY id DESC LIMIT 1
-            """, (paper.id,))
-
-            row = cursor.fetchone()
-            status = row['status'] if row else 'never_analyzed'
-
-            status_icon = {
-                'completed': '✅',
-                'pending': '⏳',
-                'processing': '🔄',
-                'failed': '❌',
-                'never_analyzed': '⬜'
-            }.get(status, '⬜')
-
-            safe_title = "".join(c for c in paper.title[:50] if c.isalnum() or c in (' ', '-', '_')).rstrip()
-            safe_title = safe_title.replace(' ', '-')
-            filename = f"papers/{paper.id:04d}-{safe_title or 'untitled'}.qmd"
-
-            lines.append(f"{status_icon} [{paper.title}]({filename})")
-
-        conn.close()
-
-        # 写入索引
-        index_path = self.output_dir / "index.qmd"
-        with open(index_path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines))
-
-        console.print(f"[green]✓[/green] 索引文件: {index_path}")
-        return index_path
-
-    def generate_quarto_yaml(self):
-        """生成 _quarto.yml 配置文件"""
-        config = """project:
-  type: book
-  output-dir: _book
-
-book:
-  title: "Paper Digest"
-  author: "Generated by Paper Digest"
-  date: today
-  chapters:
-    - index.qmd
-    - part: "文献列表"
-      chapters:
-"""
-
-        # 获取所有文献文件
-        if self.papers_dir.exists():
-            qmd_files = sorted(self.papers_dir.glob("*.qmd"))
-            for qmd_file in qmd_files:
-                config += f"        - papers/{qmd_file.name}\n"
-
-        config += """
-format:
-  html:
-    theme: cosmo
-    toc: true
-    toc-depth: 3
-  pdf:
-    documentclass: scrreprt
-"""
-
-        config_path = self.output_dir / "_quarto.yml"
-        with open(config_path, 'w', encoding='utf-8') as f:
-            f.write(config)
-
-        console.print(f"[green]✓[/green] 配置文件: {config_path}")
-        return config_path
+        self.export_papers_json()
+        self.generate_html()
+        console.print(f"\n[green]✓[/green] 渲染完成！文件位于: {self.output_dir}/")
+        console.print(f"  - index.html: 主页面")
+        console.print(f"  - papers.json: 文献数据")
+        console.print(f"\n本地预览: paper-digest serve")

@@ -1,11 +1,12 @@
 """CLI 入口 - 命令行接口"""
 
 import click
+from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
 from .processor import PaperProcessor
-from .render import QuartoRenderer
+from .render import Renderer
 
 console = Console()
 
@@ -13,7 +14,7 @@ console = Console()
 @click.group()
 @click.version_option(version="0.1.0")
 def main():
-    """Paper Digest - 基于 Zotero + Qwen 的科研文献知识编译系统"""
+    """Paper Digest - 基于 Zotero + AI 的科研文献知识编译系统"""
     pass
 
 
@@ -94,18 +95,46 @@ def rebuild():
 
 @main.command()
 def render():
-    """渲染 Quarto Book"""
+    """生成文献展示网站"""
     try:
-        renderer = QuartoRenderer()
+        renderer = Renderer()
         renderer.render_all()
-        renderer.generate_index()
-        renderer.generate_quarto_yaml()
-        console.print("[green]✓[/green] 渲染完成！")
-        console.print("\n运行以下命令生成书籍：")
-        console.print("  cd quarto && quarto render")
+        console.print("\n[green]✓[/green] 渲染完成！")
+        console.print("\n文件位于: public/")
+        console.print("  - index.html: 主页面")
+        console.print("  - papers.json: 文献数据")
+        console.print("\n本地预览:")
+        console.print("  paper-digest serve")
     except Exception as e:
         console.print(f"[red]渲染失败: {e}[/red]")
+        import traceback
+        traceback.print_exc()
         raise click.Abort()
+
+
+@main.command()
+@click.option('--port', '-p', default=8080, help='端口号')
+@click.option('--host', '-h', default='localhost', help='主机地址')
+def serve(port: int, host: str):
+    """启动本地服务器预览"""
+    import http.server
+    import socketserver
+    import os
+
+    public_dir = Path('public')
+    if not public_dir.exists():
+        console.print("[red]错误: public/ 目录不存在，请先运行 paper-digest render[/red]")
+        raise click.Abort()
+
+    os.chdir(public_dir)
+
+    with socketserver.TCPServer((host, port), http.server.SimpleHTTPRequestHandler) as httpd:
+        console.print(f"[green]✓[/green] 服务器启动: http://{host}:{port}/")
+        console.print("按 Ctrl+C 停止")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            console.print("\n[yellow]服务器已停止[/yellow]")
 
 
 @main.command()
