@@ -23,10 +23,29 @@ uv pip install -e .
 
 ### 2. 配置
 
-创建 `.env` 文件：
+#### 获取必要信息
+
+**阿里云 API Key**
+- 访问 [阿里云百炼控制台](https://bailian.console.aliyun.com/cn-beijing?tab=model#/api-key) 申请 API Key
+- 填入 `.env` 的 `DASHSCOPE_API_KEY`
+
+**Zotero User ID / Library ID**
+- 打开 Zotero 客户端 → 编辑 → 首选项 → 同步
+- 查看 "用户 ID" 或访问 [Zotero 设置页面](https://www.zotero.org/settings/keys)
+- 填入 `.env` 的 `ZOTERO_USER_ID`
+
+**Zotero 本地路径**
+- `ZOTERO_ROOT_DIR`: 附件（PDF）存储目录
+  - 查看位置：Zotero 首选项 → 高级 → 文件和文件夹 → "数据存储位置" 下的 `storage` 文件夹
+- `ZOTERO_DATA_DIR`: Zotero 数据目录
+  - 查看位置：Zotero 首选项 → 高级 → 文件和文件夹 → "数据存储位置"
+
+#### 创建 `.env` 文件
+
+将 `.env.example` 复制一份，保存为 `.env`，填写获取到的信息。
 
 ```bash
-ZOTERO_USER_ID=62236
+ZOTERO_USER_ID=12345
 ZOTERO_ROOT_DIR=/path/to/attachments
 ZOTERO_DATA_DIR=/path/to/zotero/storage
 DASHSCOPE_API_KEY=your_key
@@ -36,84 +55,83 @@ DASHSCOPE_API_KEY=your_key
 
 ### 3. 运行
 
-**推荐：Batch 模式（省 50% 费用）**
+**一键工作流（推荐）**
+
+```bash
+paper-digest run
+```
+
+交互式向导：选择集合 → 设置数量 → 同步 → 选择解析模式 → 自动渲染 → 启动服务
+
+**手动分步执行**
 
 ```bash
 # 同步文献
 paper-digest sync --limit 10
 
-# 提交批量分析任务
-paper-digest submit-batch
+# 解析文献（实时模式）
+paper-digest build --limit 10
 
-# 等待完成（60秒轮询）
-paper-digest check-batch --wait --interval 60
+# 或 Batch 模式（省50%费用）
+paper-digest build --batch --limit 10
+paper-digest build --check --wait     # 等待结果
 
-# 生成展示页面
-paper-digest render
+# 启动服务（自动渲染）
+paper-digest serve
 ```
 
-**快速：实时模式（立即返回）**
+## 命令参考
+
+| 命令 | 说明 | 常用参数 |
+|------|------|----------|
+| `run` | 一键工作流（交互式向导） | - |
+| `sync` | 从 Zotero 同步文献 | `-i` 交互选择, `-c` 集合, `-l` 数量 |
+| `build` | 解析文献 | `-b` Batch模式, `--check` 检查结果, `-w` 等待 |
+| `serve` | 启动服务（自动渲染） | `--no-render` 跳过渲染, `--no-open` 不打开浏览器 |
+| `dev` | 开发模式（强制渲染+启动） | - |
+| `stats` | 查看统计 | - |
+| `show <id>` | 查看单篇详情 | - |
+| `collections` | 列出 Zotero 集合 | - |
+| `tags` | 列出 Zotero 标签 | - |
+
+## 使用示例
+
+### 交互式选择集合
 
 ```bash
-paper-digest sync --limit 5
-paper-digest build --limit 5
-paper-digest render
+paper-digest sync -i --limit 20
 ```
 
-### 4. 查看结果
+### 实时解析新文献
 
 ```bash
-# 本地预览
-cd public && python3 -m http.server 8080
-# 浏览器访问 http://localhost:8080
+paper-digest sync --limit 10
+paper-digest build --limit 10
+paper-digest serve
 ```
 
-或直接打开 `public/index.html`。
-
----
-
-## 常用命令
-
-### 文献管理
-
-| 命令 | 说明 |
-|------|------|
-| `paper-digest stats` | 查看统计 |
-| `paper-digest show 1` | 查看文献详情 |
-
-### 筛选同步
+### Batch 模式（省50%费用）
 
 ```bash
-# 交互式选择集合
-paper-digest sync -i --limit 10
+# 提交任务
+paper-digest build --batch --limit 20
 
-# 按集合名称同步
-paper-digest sync -c "Seed Microbiome" --limit 10
+# 稍后检查结果
+paper-digest build --check --wait
 
-# 按标签同步
-paper-digest sync -t "#重要研究" --limit 10
+# 启动服务
+paper-digest serve
 ```
 
-### 批量处理
+### 开发调试
 
 ```bash
-# 提交批量任务
-paper-digest submit-batch --limit 20
+# 强制重新渲染并启动服务
+paper-digest dev
 
-# 检查并获取结果
-paper-digest check-batch --wait --interval 60
+# 或只启动服务（跳过渲染）
+paper-digest serve --no-render
 ```
-
-### 生成展示页面
-
-```bash
-# 生成文献展示网站
-paper-digest render
-
-# 文件输出到 public/ 目录
-```
-
----
 
 ## 界面功能
 
@@ -127,6 +145,7 @@ paper-digest render
 ### 解读内容展示
 
 AI 生成的完整文献分析包含：
+
 - **一句话解读**：核心结论快速概览
 - **研究背景**：领域问题和研究动机
 - **研究结论**：主要发现和成果
@@ -143,8 +162,6 @@ AI 生成的完整文献分析包含：
 - **URL 状态同步**：所有操作自动同步到 URL，可分享特定视图
 - **Zotero 跳转**：一键在 Zotero 中打开原文
 
----
-
 ## 文件结构
 
 ```
@@ -156,8 +173,6 @@ AI 生成的完整文献分析包含：
     ├── index.html       # 单页面应用
     └── papers.json      # 文献数据（含完整解读）
 ```
-
----
 
 ## 技术架构
 
@@ -173,13 +188,9 @@ Zotero → PDF → Qwen-long → SQLite → public/
 - **缓存机制**：hash(PDF内容 + prompt) 作为 key
 - **前端**：原生 JavaScript，无框架依赖，单 HTML 文件
 
----
-
 ## 自定义提示词
 
 编辑 `prompts/default.txt` 可自定义 AI 分析的内容结构。修改后自动重新分析（缓存失效）。
-
----
 
 ## 文档
 
