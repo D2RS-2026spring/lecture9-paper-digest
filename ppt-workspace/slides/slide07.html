@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  background: #f7fafc;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  background: #1a365d;
+  padding: 12pt 30pt;
+}
+.header h1 {
+  color: #ffffff;
+  font-size: 22pt;
+  margin: 0;
+}
+.content {
+  padding: 12pt 25pt;
+  flex: 1;
+}
+.intro {
+  background: #1a365d;
+  color: white;
+  padding: 8pt 15pt;
+  border-radius: 6pt;
+  margin-bottom: 10pt;
+}
+.intro p {
+  font-size: 11pt;
+  line-height: 1.4;
+  margin: 0;
+}
+.intro .highlight {
+  color: #68d391;
+  font-weight: bold;
+}
+.main-row {
+  display: flex;
+  gap: 15pt;
+}
+.providers-section {
+  flex: 1.3;
+}
+.images-section {
+  flex: 1;
+}
+.section-subtitle-wrapper {
+  margin: 0 0 8pt 0;
+  padding-left: 8pt;
+  border-left: 3pt solid #4299e1;
+}
+.section-subtitle-wrapper p {
+  color: #2d3748;
+  font-size: 11pt;
+  font-weight: bold;
+  margin: 0;
+}
+.provider-list {
+  background: white;
+  border-radius: 6pt;
+  padding: 8pt 10pt;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.provider-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5pt 0;
+  border-bottom: 1pt solid #e2e8f0;
+}
+.provider-item:last-child {
+  border-bottom: none;
+}
+.provider-name {
+  color: #1a365d;
+  font-size: 10pt;
+  font-weight: bold;
+}
+.provider-link {
+  color: #2b6cb0;
+  font-size: 7pt;
+  max-width: 160pt;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-link a {
+  color: #2b6cb0;
+  text-decoration: underline;
+}
+.provider-link p {
+  margin: 0;
+}
+.export-title {
+  background: #fed7d7;
+  color: #c53030;
+  padding: 4pt 8pt;
+  border-radius: 4pt;
+  font-size: 9pt;
+  font-weight: bold;
+  margin-bottom: 8pt;
+  text-align: center;
+}
+.export-title p {
+  margin: 0;
+}
+.img-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8pt;
+}
+.img-box {
+  background: #e2e8f0;
+  border: 1pt dashed #a0aec0;
+  border-radius: 4pt;
+  padding: 12pt 6pt;
+  text-align: center;
+}
+.img-box p {
+  margin: 0;
+  font-size: 8pt;
+  color: #718096;
+}
+.img-box-large {
+  grid-column: span 2;
+  padding: 15pt 6pt;
+}
+.tip-text {
+  font-size: 8pt;
+  color: #718096;
+  margin-top: 6pt;
+  text-align: center;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>幕后补给：Token 出海与批发 (Coding Plan)</h1>
+</div>
+<div class="content">
+  <div class="intro">
+    <p>Vibe Coding 的大规模应用，依赖于<span class="highlight">极低成本的 Token 供应</span> | Token = AI 时代的算力燃料</p>
+  </div>
+
+  <div class="main-row">
+    <div class="providers-section">
+      <div class="section-subtitle-wrapper"><p>国内主流模型提供商（Coding Plan 优惠）</p></div>
+      <div class="provider-list">
+        <div class="provider-item">
+          <span class="provider-name">阿里云百炼</span>
+          <span class="provider-link"><a href="https://bailian.console.aliyun.com/cn-beijing?spm=5176.45659035.0.0.174f6256FCLz8w&tab=coding-plan#/efm/coding-plan-index">bailian.console.aliyun.com - Coding Plan</a></span>
+        </div>
+        <div class="provider-item">
+          <span class="provider-name">智谱 AI</span>
+          <span class="provider-link"><a href="https://docs.bigmodel.cn/cn/coding-plan/overview">docs.bigmodel.cn - Coding Plan</a></span>
+        </div>
+        <div class="provider-item">
+          <span class="provider-name">火山引擎</span>
+          <span class="provider-link"><a href="https://www.volcengine.com/activity/codingplan">volcengine.com/activity/codingplan</a></span>
+        </div>
+        <div class="provider-item">
+          <span class="provider-name">MinMax</span>
+          <span class="provider-link"><a href="https://platform.minimaxi.com/docs/guides/pricing-token-plan">platform.minimaxi.com - Token Plan</a></span>
+        </div>
+      </div>
+      <p class="tip-text">充分利用国内云厂商的 Coding Plan 优惠，大幅降低 Token 成本</p>
+    </div>
+
+    <div class="images-section">
+      <div class="export-title"><p>中国出口新动向 - Token 批发</p></div>
+      <div style="background: #1a365d; color: white; padding: 15pt; border-radius: 6pt; text-align: center;">
+        <p style="font-size: 12pt; margin: 0 0 8pt 0;">相关截图详见后续页面</p>
+        <p style="font-size: 10pt; margin: 0; color: #a8d1f0;">Token 出海 | Coding Plan | 价格对比</p>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

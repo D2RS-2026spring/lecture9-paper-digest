@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  background: #f7fafc;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  background: #1a365d;
+  padding: 15pt 30pt;
+}
+.header h1 {
+  color: #ffffff;
+  font-size: 28pt;
+  margin: 0;
+}
+.content {
+  padding: 25pt 30pt;
+  display: flex;
+  gap: 40pt;
+}
+.column {
+  flex: 1;
+}
+.section-title {
+  color: #1a365d;
+  font-size: 18pt;
+  font-weight: bold;
+  margin-bottom: 15pt;
+  padding-bottom: 8pt;
+  border-bottom: 3pt solid #4299e1;
+}
+ul {
+  margin: 0;
+  padding-left: 20pt;
+  color: #2d3748;
+  font-size: 13pt;
+  line-height: 1.8;
+}
+li {
+  margin-bottom: 8pt;
+}
+.highlight {
+  color: #c53030;
+  font-weight: bold;
+}
+.deadline {
+  background: #fed7d7;
+  color: #c53030;
+  padding: 2pt 8pt;
+  border-radius: 4pt;
+  font-weight: bold;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>结课安排：最后的冲刺</h1>
+</div>
+<div class="content">
+  <div class="column">
+    <div class="section-title"><p>项目进度</p></div>
+    <ul>
+      <li>复现项目规划 <span style="color:#38a169;font-weight:bold;">✓</span></li>
+      <li>项目实施和提交 <span class="deadline">截止 2026年5月30日</span></li>
+    </ul>
+  </div>
+  <div class="column">
+    <div class="section-title"><p>考核标准</p></div>
+    <ul>
+      <li><span class="highlight">重点：</span>体现课堂所教所学的技术栈应用</li>
+      <li><span class="highlight">立意：</span>不仅是跑通代码，而是体现<span class="highlight">数据科学</span>、<span class="highlight">可重复研究</span>的理论体系与实践方法</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

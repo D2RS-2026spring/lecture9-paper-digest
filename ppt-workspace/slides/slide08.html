@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  background: #f7fafc;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  background: #1a365d;
+  padding: 15pt 30pt;
+}
+.header h1 {
+  color: #ffffff;
+  font-size: 28pt;
+  margin: 0;
+}
+.content {
+  padding: 20pt 30pt;
+  display: flex;
+  gap: 25pt;
+}
+.left-column {
+  flex: 1;
+}
+.right-column {
+  flex: 1.2;
+}
+.section-title-wrapper {
+  margin-bottom: 12pt;
+  padding-bottom: 6pt;
+  border-bottom: 3pt solid #4299e1;
+}
+.section-title-wrapper p {
+  color: #1a365d;
+  font-size: 16pt;
+  font-weight: bold;
+  margin: 0;
+}
+.resource-card {
+  background: white;
+  border-radius: 8pt;
+  padding: 12pt;
+  margin-bottom: 12pt;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-left: 4pt solid #4299e1;
+}
+.resource-card h3 {
+  color: #1a365d;
+  font-size: 13pt;
+  margin: 0 0 8pt 0;
+}
+.resource-card p {
+  color: #4a5568;
+  font-size: 10pt;
+  margin: 0 0 6pt 0;
+  line-height: 1.4;
+}
+.resource-card a {
+  color: #2b6cb0;
+  font-size: 9pt;
+  word-break: break-all;
+  text-decoration: underline;
+}
+.claude-intro {
+  background: #1a365d;
+  color: white;
+  padding: 15pt;
+  border-radius: 8pt;
+}
+.claude-intro h3 {
+  font-size: 14pt;
+  margin: 0 0 10pt 0;
+  color: #a8d1f0;
+}
+.claude-intro p {
+  font-size: 11pt;
+  line-height: 1.5;
+  margin: 0 0 8pt 0;
+}
+.claude-intro .highlight {
+  color: #68d391;
+  font-weight: bold;
+}
+.feature-list {
+  margin: 0;
+  padding-left: 15pt;
+}
+.feature-list li {
+  font-size: 10pt;
+  margin-bottom: 4pt;
+  color: #e2e8f0;
+}
+.suggestion-box {
+  background: #c6f6d5;
+  border-left: 4pt solid #38a169;
+  padding: 10pt 12pt;
+  border-radius: 4pt;
+  margin-top: 8pt;
+}
+.suggestion-box p {
+  margin: 0;
+  font-size: 10pt;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>进阶实操：Claude Code 配置</h1>
+</div>
+<div class="content">
+  <div class="left-column">
+    <div class="claude-intro">
+      <h3>什么是 Claude Code？</h3>
+      <p>Claude Code 是 Anthropic 推出的 <span class="highlight">AI 编程助手</span>，能够：</p>
+      <ul class="feature-list">
+        <li>理解大型代码库，进行智能代码导航</li>
+        <li>自动编辑文件、执行命令、编写代码</li>
+        <li>支持 Agent 模式，自主完成任务</li>
+        <li>与 VS Code 等 IDE 深度集成</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="right-column">
+    <div class="section-title-wrapper"><p>学习资源推荐</p></div>
+
+    <div class="resource-card">
+      <h3>哔哩哔哩视频教程</h3>
+      <p>秋芝 2046 Agent Skills - 系统讲解 Claude Code 的使用技巧和最佳实践</p>
+      <a href="https://www.bilibili.com/video/BV1G3FNznEiS/">BV1G3FNznEiS</a>
+    </div>
+
+    <div class="resource-card">
+      <h3>配套图文指南</h3>
+      <p>详细的图文教程，覆盖安装配置、常用命令、实战案例等内容</p>
+      <a href="https://guide-app-lyart.vercel.app/">guide-app-lyart.vercel.app</a>
+    </div>
+
+    <div class="suggestion-box">
+      <p><span style="color:#22543d;font-weight:bold;">建议：</span><span style="color:#2f855a;">先观看视频建立整体认知，再查阅图文指南进行实操练习</span></p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  background: #f7fafc;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  background: #1a365d;
+  padding: 15pt 30pt;
+}
+.header h1 {
+  color: #ffffff;
+  font-size: 26pt;
+  margin: 0;
+}
+.content {
+  padding: 15pt 30pt;
+  flex: 1;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12pt;
+}
+.card {
+  background: #ffffff;
+  border-radius: 8pt;
+  padding: 12pt;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-left: 4pt solid #4299e1;
+}
+.card-title {
+  color: #1a365d;
+  font-size: 12pt;
+  font-weight: bold;
+  margin-bottom: 6pt;
+}
+.card-content {
+  color: #4a5568;
+  font-size: 10pt;
+  line-height: 1.4;
+}
+.core-purpose {
+  background: #1a365d;
+  color: #ffffff;
+  padding: 12pt 20pt;
+  border-radius: 8pt;
+  margin-bottom: 15pt;
+  text-align: center;
+}
+.core-purpose p {
+  font-size: 13pt;
+  margin: 0;
+}
+.highlight {
+  color: #63b3ed;
+  font-weight: bold;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>内容回顾：我们的知识版图</h1>
+</div>
+<div class="content">
+  <div class="core-purpose">
+    <p>核心目的：<span class="highlight">锚定研究可重复性难题</span>，探索系统解决方案，提高研究生科研能力</p>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <p class="card-title">项目管理</p>
+      <p class="card-content">规范的目录结构、软件仓库管理</p>
+    </div>
+    <div class="card">
+      <p class="card-title">环境配置</p>
+      <p class="card-content">renv 管理 R 环境，uv 管理 Python 环境，.env 管理系统变量</p>
+    </div>
+    <div class="card">
+      <p class="card-title">文学化编程</p>
+      <p class="card-content">单文件 QMD、网页类 Quarto、图书类 Quarto 项目</p>
+    </div>
+    <div class="card">
+      <p class="card-title">工具链整合</p>
+      <p class="card-content">Git/GitHub、Positron/VSCode、Markdown/QMD、AI 辅助工具</p>
+    </div>
+    <div class="card">
+      <p class="card-title">实战复现</p>
+      <p class="card-content">4 个 R/Python 项目：统计分析、组学数据、神经网络、CNN</p>
+    </div>
+    <div class="card">
+      <p class="card-title">Vibe Coding</p>
+      <p class="card-content">AI 辅助开发、Agent 编程、Token 优化、Claude Code</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  background: #f7fafc;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  background: #1a365d;
+  padding: 15pt 30pt;
+}
+.header h1 {
+  color: #ffffff;
+  font-size: 24pt;
+  margin: 0;
+}
+.content {
+  padding: 20pt 30pt;
+  display: flex;
+  gap: 25pt;
+}
+.left-column {
+  flex: 1;
+}
+.right-column {
+  flex: 1;
+}
+.core-view {
+  background: #1a365d;
+  color: white;
+  padding: 15pt;
+  border-radius: 8pt;
+  margin-bottom: 15pt;
+}
+.core-view .title {
+  font-size: 12pt;
+  font-weight: bold;
+  margin-bottom: 8pt;
+  color: #a8d1f0;
+}
+.core-view .title p {
+  margin: 0;
+}
+.core-view .content-text {
+  font-size: 13pt;
+  line-height: 1.5;
+}
+.core-view .content-text p {
+  margin: 0;
+}
+.core-view .highlight {
+  color: #68d391;
+  font-weight: bold;
+}
+.strategy-card {
+  background: white;
+  border-radius: 8pt;
+  padding: 12pt;
+  margin-bottom: 10pt;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-left: 4pt solid #4299e1;
+}
+.strategy-card h4 {
+  color: #1a365d;
+  font-size: 12pt;
+  margin: 0 0 6pt 0;
+}
+.strategy-card p {
+  color: #4a5568;
+  font-size: 10pt;
+  margin: 0;
+  line-height: 1.4;
+}
+.title-wrapper {
+  margin-bottom: 12pt;
+  padding-bottom: 6pt;
+  border-bottom: 3pt solid #4299e1;
+}
+.title-wrapper p {
+  color: #1a365d;
+  font-size: 14pt;
+  font-weight: bold;
+  margin: 0;
+}
+.insight-box {
+  background: #2d5a87;
+  color: white;
+  padding: 12pt;
+  border-radius: 8pt;
+  margin-top: 8pt;
+}
+.insight-box .insight-title {
+  font-size: 11pt;
+  color: #a8d1f0;
+  margin-bottom: 6pt;
+}
+.insight-box .insight-title p {
+  margin: 0;
+}
+.insight-box .insight-content {
+  font-size: 11pt;
+  line-height: 1.4;
+}
+.insight-box .insight-content p {
+  margin: 0;
+}
+.insight-box .highlight {
+  color: #68d391;
+  font-weight: bold;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>职业展望：Vibe Coding 与程序员的未来</h1>
+</div>
+<div class="content">
+  <div class="left-column">
+    <div class="core-view">
+      <div class="title"><p>核心观点</p></div>
+      <div class="content-text">
+        <p>有了AI更加需要<span class="highlight">"程序员"</span>，但这个程序员指的是具有<span class="highlight">需求定义能力</span>和<span class="highlight">产品思路</span>的开发者</p>
+      </div>
+    </div>
+
+    <div class="title-wrapper"><p>能力转型方向</p></div>
+    <div style="background:white;padding:12pt;border-radius:8pt;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+      <table style="width:100%;border-collapse:collapse;">
+        <tr>
+          <td style="padding:8pt;border-bottom:1pt solid #e2e8f0;color:#718096;width:35%;"><p>从"敲代码"</p></td>
+          <td style="padding:8pt;border-bottom:1pt solid #e2e8f0;color:#38a169;width:15%;text-align:center;font-size:14pt;"><p>→</p></td>
+          <td style="padding:8pt;border-bottom:1pt solid #e2e8f0;color:#1a365d;font-weight:bold;width:50%;"><p>转向"架构设计"</p></td>
+        </tr>
+        <tr>
+          <td style="padding:8pt;color:#718096;"><p>被动实现</p></td>
+          <td style="padding:8pt;color:#38a169;text-align:center;font-size:14pt;"><p>→</p></td>
+          <td style="padding:8pt;color:#1a365d;font-weight:bold;"><p>"项目管理"</p></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="right-column">
+    <div class="title-wrapper"><p>开发策略</p></div>
+
+    <div class="strategy-card">
+      <h4>内部 CLI 化</h4>
+      <p>确保核心工具的稳定与可靠，将常用功能封装为命令行工具</p>
+    </div>
+
+    <div class="strategy-card">
+      <h4>面向用户智能化</h4>
+      <p>利用大模型提供柔性交互界面，让非技术用户也能轻松使用</p>
+    </div>
+
+    <div class="insight-box">
+      <div class="insight-title"><p>关键洞察</p></div>
+      <div class="insight-content">
+        <p>AI不会取代程序员，而是<span class="highlight">改变程序员的工作方式</span>——从写代码转向设计架构、定义需求、管理项目</p>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  background: #f7fafc;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  background: #1a365d;
+  padding: 12pt 30pt;
+}
+.header h1 {
+  color: #ffffff;
+  font-size: 24pt;
+  margin: 0;
+}
+.content {
+  padding: 15pt 30pt;
+  display: flex;
+  gap: 20pt;
+}
+.left-column {
+  flex: 1.3;
+}
+.right-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10pt;
+}
+.flow-item {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 8pt;
+}
+.flow-number {
+  width: 22pt;
+  height: 22pt;
+  background: #4299e1;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 11pt;
+  margin-right: 10pt;
+  flex-shrink: 0;
+  margin-top: 2pt;
+}
+.flow-number p {
+  margin: 0;
+  color: white;
+}
+.flow-text {
+  color: #2d3748;
+  font-size: 11pt;
+  line-height: 1.4;
+}
+.flow-text p {
+  margin: 0;
+}
+.tech-card {
+  background: white;
+  border-radius: 6pt;
+  padding: 10pt 12pt;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-left: 3pt solid #4299e1;
+}
+.tech-card h3 {
+  color: #1a365d;
+  font-size: 11pt;
+  margin: 0 0 6pt 0;
+}
+.tech-card p {
+  color: #4a5568;
+  font-size: 9pt;
+  margin: 0;
+  line-height: 1.4;
+}
+.tech-card a {
+  color: #2b6cb0;
+  font-size: 8pt;
+  word-break: break-all;
+  text-decoration: underline;
+}
+.highlight {
+  color: #c53030;
+  font-weight: bold;
+}
+.title-wrapper {
+  margin-bottom: 10pt;
+  padding-bottom: 5pt;
+  border-bottom: 2pt solid #4299e1;
+}
+.title-wrapper p {
+  color: #1a365d;
+  font-size: 14pt;
+  font-weight: bold;
+  margin: 0;
+}
+.link-box {
+  background: #ebf8ff;
+  border-radius: 4pt;
+  padding: 6pt 10pt;
+  margin-top: 6pt;
+}
+.link-box a {
+  margin: 0;
+  font-size: 8pt;
+  color: #2b6cb0;
+  text-decoration: underline;
+  word-break: break-all;
+}
+.img-placeholder {
+  background: #e2e8f0;
+  border: 1pt dashed #a0aec0;
+  border-radius: 4pt;
+  padding: 8pt;
+  text-align: center;
+  margin-top: 6pt;
+}
+.img-placeholder p {
+  margin: 0;
+  font-size: 8pt;
+  color: #718096;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Paper Digest 项目演示：Vibe Coding 实战</h1>
+</div>
+<div class="content">
+  <div class="left-column">
+    <div class="title-wrapper"><p>开发流程闭环</p></div>
+    <div class="flow-item">
+      <div class="flow-number"><p>1</p></div>
+      <div class="flow-text">
+        <p><b>需求讨论：</b>与 ChatGPT 确定系统架构</p>
+        <div class="link-box"><a href="https://chatgpt.com/share/69c9d325-7220-8323-99e2-db2dd7dd7e29">chatgpt.com/share/69c9d325-7220-8323-99e2-db2dd7dd7e29</a></div>
+      </div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-number"><p>2</p></div>
+      <div class="flow-text"><p><b>规则先行：</b>提供开发文档，确保 AI 开发有章可循</p></div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-number"><p>3</p></div>
+      <div class="flow-text"><p><b>原型验证：</b>使用 Quarto 文档进行分步实现，完成原型设计和 README</p></div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-number"><p>4</p></div>
+      <div class="flow-text"><p><b>Agent 开发：</b>使用 Claude Code + Kimi K2.5 花费约 <span class="highlight">60 元</span> Token 开发完成</p></div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-number"><p>5</p></div>
+      <div class="flow-text"><p><b>人工干预：</b>中途必要时进行干预，参与开发过程，确保科学性</p></div>
+    </div>
+  </div>
+  <div class="right-column">
+    <div class="tech-card">
+      <h3>技术栈</h3>
+      <p>Python、Zotero、LLM（Qwen-Long）</p>
+    </div>
+    <div class="tech-card">
+      <h3>开发截图</h3>
+      <p>详见下页截图展示</p>
+    </div>
+    <div class="tech-card">
+      <h3>开发历程</h3>
+      <p>GitHub Commit History 完整记录开发过程</p>
+      <div class="link-box"><a href="https://github.com/D2RS-2026spring/lecture9-paper-digest/commits/main/">github.com/D2RS-2026spring/lecture9-paper-digest/commits/main</a></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

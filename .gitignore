@@ -4,7 +4,7 @@
 
 # quarto 临时文件
 *_files/
-*.html
+/*.html
 *.quarto_ipynb
 
 # 本地图书目录
