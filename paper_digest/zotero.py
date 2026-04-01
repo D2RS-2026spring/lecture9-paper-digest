@@ -125,7 +125,7 @@ class ZoteroClient:
                 full_path = self.resolve_attachment_path(
                     pdf.get('path', ''),
                     filename=pdf.get('filename'),
-                    item_key=pdf.get('key')
+                    item_key=item_key  # 使用父文献的 key，而非附件的 key
                 )
                 if full_path and os.path.exists(full_path):
                     # 提取作者
