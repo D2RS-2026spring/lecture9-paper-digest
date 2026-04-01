@@ -42,7 +42,8 @@ class ZoteroClient:
 
         self.zot = zotero.Zotero(self.library_id, "user", local=True)
 
-    def resolve_attachment_path(self, path: str) -> Optional[str]:
+    def resolve_attachment_path(self, path: str, filename: Optional[str] = None,
+                                 item_key: Optional[str] = None) -> Optional[str]:
         """将 Zotero 附件路径转换为完整文件系统路径"""
         if not path or path == 'N/A':
             return None
@@ -68,6 +69,13 @@ class ZoteroClient:
                 if os.path.exists(full_path):
                     return full_path
             return None
+
+        # 纯文件名（filename 存储方式）
+        # 文件实际存储在 {data_dir}/storage/{item_key}/{filename}
+        if filename and item_key and self.data_dir:
+            full_path = os.path.join(self.data_dir, 'storage', item_key, filename)
+            if os.path.exists(full_path):
+                return full_path
 
         return None
 
@@ -114,7 +122,11 @@ class ZoteroClient:
             # 获取 PDF
             pdf = self.get_pdf_attachment(item_key)
             if pdf:
-                full_path = self.resolve_attachment_path(pdf.get('path', ''))
+                full_path = self.resolve_attachment_path(
+                    pdf.get('path', ''),
+                    filename=pdf.get('filename'),
+                    item_key=pdf.get('key')
+                )
                 if full_path and os.path.exists(full_path):
                     # 提取作者
                     creators = data.get('creators', [])
