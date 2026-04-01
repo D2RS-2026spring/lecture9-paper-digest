@@ -26,15 +26,18 @@ uv pip install -e .
 #### 获取必要信息
 
 **阿里云 API Key**
+
 - 访问 [阿里云百炼控制台](https://bailian.console.aliyun.com/cn-beijing?tab=model#/api-key) 申请 API Key
 - 填入 `.env` 的 `DASHSCOPE_API_KEY`
 
 **Zotero User ID / Library ID**
+
 - 打开 Zotero 客户端 → 编辑 → 首选项 → 同步
 - 查看 "用户 ID" 或访问 [Zotero 设置页面](https://www.zotero.org/settings/keys)
 - 填入 `.env` 的 `ZOTERO_USER_ID`
 
 **Zotero 本地路径**
+
 - `ZOTERO_ROOT_DIR`: 附件（PDF）存储目录
   - 查看位置：Zotero 首选项 → 高级 → 文件和文件夹 → "数据存储位置" 下的 `storage` 文件夹
 - `ZOTERO_DATA_DIR`: Zotero 数据目录
