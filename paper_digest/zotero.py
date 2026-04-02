@@ -45,11 +45,12 @@ class ZoteroClient:
     def resolve_attachment_path(self, path: str, filename: Optional[str] = None,
                                  item_key: Optional[str] = None) -> Optional[str]:
         """将 Zotero 附件路径转换为完整文件系统路径"""
-        if not path or path == 'N/A':
+        # 路径为空或为 N/A，但有 filename 和 item_key 时，仍尝试解析
+        if (not path or path == 'N/A') and not (filename and item_key):
             return None
 
         # 已经是绝对路径
-        if os.path.isabs(path) and os.path.exists(path):
+        if path and os.path.isabs(path) and os.path.exists(path):
             return path
 
         # attachments: 开头（链接附件）
@@ -72,8 +73,15 @@ class ZoteroClient:
 
         # 纯文件名（filename 存储方式）
         # 文件实际存储在 {data_dir}/storage/{item_key}/{filename}
+        # 注意：data_dir 可能已经包含 storage 目录，需要兼容处理
         if filename and item_key and self.data_dir:
+            # 方案1: data_dir 是 Zotero 根目录，需要加 storage
             full_path = os.path.join(self.data_dir, 'storage', item_key, filename)
+            if os.path.exists(full_path):
+                return full_path
+
+            # 方案2: data_dir 已经包含 storage 目录
+            full_path = os.path.join(self.data_dir, item_key, filename)
             if os.path.exists(full_path):
                 return full_path
 
@@ -125,7 +133,7 @@ class ZoteroClient:
                 full_path = self.resolve_attachment_path(
                     pdf.get('path', ''),
                     filename=pdf.get('filename'),
-                    item_key=item_key  # 使用父文献的 key，而非附件的 key
+                    item_key=pdf.get('key')  # 使用附件的 key
                 )
                 if full_path and os.path.exists(full_path):
                     # 提取作者
